@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Mapping
+from typing import Dict, Iterable, List
+
+from textual.binding import Binding
+from textual.message import Message
+from textual.widget import Widget
 
 
 @dataclass
@@ -31,6 +35,12 @@ class ControlPanel:
 
     def clear_route(self) -> None:
         self._route_waypoints.clear()
+
+    @property
+    def route_waypoints(self) -> List[str]:
+        """Expose a copy of the currently staged route."""
+
+        return list(self._route_waypoints)
 
     # ------------------------------------------------------------------
     def set_module_state(self, module_id: str, action: str) -> None:
@@ -86,7 +96,7 @@ class ControlPanel:
         self.clear_crew()
 
     # ------------------------------------------------------------------
-    def render(self):
+    def render(self, *, title: str | None = None):
         from rich.panel import Panel
         from rich.table import Table
 
@@ -106,7 +116,44 @@ class ControlPanel:
         else:
             table.add_row("[bold]Crew[/bold]", "(no assignments)")
 
-        return Panel(table, title="Turn Controls", border_style="white")
+        return Panel(table, title=title or "Turn Controls", border_style="white")
 
 
-__all__ = ["ControlPanel"]
+class ControlPanelWidget(Widget):
+    """Textual widget wrapper for the turn control panel."""
+
+    BINDINGS = [
+        Binding("x", "reset_plan", "Reset Plan", show=False),
+    ]
+
+    class PlanUpdated(Message):
+        """Notify listeners that the staged plan changed."""
+
+        def __init__(self, sender: "ControlPanelWidget") -> None:
+            super().__init__(sender)
+
+    class PlanReset(Message):
+        """Raised when the plan has been cleared via the widget."""
+
+        def __init__(self, sender: "ControlPanelWidget") -> None:
+            super().__init__(sender)
+
+    def __init__(self, panel: ControlPanel | None = None, *, title: str | None = None) -> None:
+        super().__init__(id="controls")
+        self.control_panel = panel or ControlPanel()
+        self.title = title
+
+    def render(self):  # type: ignore[override]
+        return self.control_panel.render(title=self.title)
+
+    def action_reset_plan(self) -> None:
+        self.control_panel.reset()
+        self.refresh()
+        self.post_message(self.PlanReset(self))
+
+    def refresh_from_panel(self) -> None:
+        self.refresh()
+        self.post_message(self.PlanUpdated(self))
+
+
+__all__ = ["ControlPanel", "ControlPanelWidget"]

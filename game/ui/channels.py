@@ -147,6 +147,11 @@ class NotificationChannel:
                 )
             )
 
+    def clear(self) -> None:
+        """Remove all stored notifications."""
+
+        self._notifications.clear()
+
     def render_panel(self, *, title: str = "Notifications"):
         from rich.panel import Panel
         from rich.table import Table
