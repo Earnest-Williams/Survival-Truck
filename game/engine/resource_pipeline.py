@@ -15,7 +15,7 @@ from ..truck import (
     ItemCategory,
     Truck,
 )
-from ..world.sites import Site
+from .world import CrewComponent, SitesComponent, TruckComponent
 
 
 @dataclass
@@ -46,13 +46,15 @@ class ResourcePipeline:
 
     # ------------------------------------------------------------------
     def process_crew_actions(self, context: "TurnContext") -> None:
-        truck = context.world_state.get("truck")
-        crew = context.world_state.get("crew")
-        if not isinstance(truck, Truck):
+        truck_component = context.world.get_singleton(TruckComponent)
+        if truck_component is None:
             return
+        truck = truck_component.truck
         inventory = truck.inventory if isinstance(truck.inventory, Inventory) else None
         if inventory is None:
             return
+        crew_component = context.world.get_singleton(CrewComponent)
+        crew = crew_component.crew if crew_component is not None else None
         actions = context.command.get("crew_actions", [])
         if not isinstance(actions, Iterable):
             return
@@ -108,14 +110,16 @@ class ResourcePipeline:
             )
 
     def process_site_exploitation(self, context: "TurnContext") -> None:
-        truck = context.world_state.get("truck")
-        if not isinstance(truck, Truck):
+        truck_component = context.world.get_singleton(TruckComponent)
+        if truck_component is None:
             return
+        truck = truck_component.truck
         inventory = truck.inventory if isinstance(truck.inventory, Inventory) else None
         if inventory is None:
             return
 
-        sites = self._extract_sites(context.world_state.get("sites"))
+        sites_component = context.world.get_singleton(SitesComponent)
+        sites = sites_component.sites if sites_component is not None else {}
         orders = context.command.get("site_exploitation", [])
         if not isinstance(orders, Iterable):
             return
@@ -239,19 +243,5 @@ class ResourcePipeline:
         if isinstance(payload, Sequence):
             return [str(entry) for entry in payload]
         return []
-
-    def _extract_sites(self, raw: object) -> Dict[str, Site]:
-        if raw is None:
-            return {}
-        if isinstance(raw, Mapping):
-            return {key: value for key, value in raw.items() if isinstance(value, Site)}
-        if isinstance(raw, Iterable):
-            sites: Dict[str, Site] = {}
-            for value in raw:
-                if isinstance(value, Site):
-                    sites[value.identifier] = value
-            return sites
-        return {}
-
 
 __all__ = ["ResourceLogEntry", "ResourcePipeline"]
