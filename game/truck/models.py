@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List
 
+from .inventory import Inventory
+
 
 class ModuleCapacityError(ValueError):
     """Raised when a module cannot fit within the truck's module capacity."""
@@ -52,6 +54,7 @@ class TruckModule:
     power_output: int = 0
     power_draw: int = 0
     storage_bonus: int = 0
+    weight_bonus: float = 0.0
     crew_required: int = 0
     maintenance_load: int = 0
     degradation_rate: float = 0.01
@@ -81,6 +84,9 @@ class TruckStats:
     power_output: int
     power_draw: int
     storage_capacity: int
+    weight_capacity: float
+    cargo_weight: float
+    cargo_volume: float
     crew_workload: int
     maintenance_load: int
 
@@ -114,10 +120,15 @@ class Truck:
     base_power_output: int
     base_power_draw: int = 0
     base_storage_capacity: int = 0
+    base_weight_capacity: float = 0.0
     base_maintenance_load: int = 0
     base_degradation_rate: float = 0.005
     modules: Dict[str, TruckModule] = field(default_factory=dict)
     condition: float = 1.0
+    inventory: Inventory = field(default_factory=Inventory)
+
+    def __post_init__(self) -> None:
+        self._sync_inventory_capacity()
 
     def equip_module(self, module: TruckModule) -> None:
         """Attach a module after validating size and crew workload constraints."""
@@ -135,14 +146,17 @@ class Truck:
                 "Equipping module would exceed available crew capacity"
             )
         self.modules[module.module_id] = module
+        self._sync_inventory_capacity()
 
     def unequip_module(self, module_id: str) -> TruckModule:
         """Detach a module from the truck."""
 
         try:
-            return self.modules.pop(module_id)
+            module = self.modules.pop(module_id)
         except KeyError as exc:  # pragma: no cover - defensive branch
             raise ModuleNotEquippedError(module_id) from exc
+        self._sync_inventory_capacity()
+        return module
 
     def get_module(self, module_id: str) -> TruckModule:
         try:
@@ -177,11 +191,28 @@ class Truck:
         )
 
     @property
+    def weight_capacity(self) -> float:
+        return self.base_weight_capacity + sum(
+            module.weight_bonus for module in self.modules.values()
+        )
+
+    def _sync_inventory_capacity(self) -> None:
+        if not isinstance(self.inventory, Inventory):
+            return
+        self.inventory.set_capacity(
+            max_weight=self.weight_capacity,
+            max_volume=self.storage_capacity,
+        )
+
+    @property
     def stats(self) -> TruckStats:
         return TruckStats(
             power_output=self.power_output,
             power_draw=self.power_draw,
             storage_capacity=self.storage_capacity,
+            weight_capacity=self.weight_capacity,
+            cargo_weight=self.inventory.total_weight if isinstance(self.inventory, Inventory) else 0.0,
+            cargo_volume=self.inventory.total_volume if isinstance(self.inventory, Inventory) else 0.0,
             crew_workload=self.current_crew_workload,
             maintenance_load=self.maintenance_load,
         )
