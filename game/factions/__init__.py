@@ -7,6 +7,7 @@ from typing import Dict, Iterable, Iterator, List, Mapping, MutableMapping, Opti
 import random
 
 from ..world.sites import Site
+from .trade import TradeInterface, TradeOffer
 
 
 @dataclass
@@ -79,6 +80,7 @@ class Faction:
     resources: MutableMapping[str, int] = field(default_factory=dict)
     caravans: Dict[str, Caravan] = field(default_factory=dict)
     known_sites: List[str] = field(default_factory=list)
+    resource_preferences: MutableMapping[str, float] = field(default_factory=dict)
 
     def register_caravan(self, caravan: Caravan) -> None:
         if caravan.faction_name != self.name:
@@ -96,6 +98,41 @@ class Faction:
 
     def adjust_resource(self, resource: str, amount: int) -> None:
         self.resources[resource] = self.resources.get(resource, 0) + amount
+
+    def set_resource_preference(self, resource: str, weight: float) -> None:
+        """Assign a desirability weight for a specific resource or category."""
+
+        self.resource_preferences[str(resource)] = float(weight)
+
+    def preference_for(
+        self, resource: str, *, category: str | None = None, default: float = 1.0
+    ) -> float:
+        """Return the preference weight for ``resource`` or ``category``."""
+
+        if resource in self.resource_preferences:
+            return float(self.resource_preferences[resource])
+        if category:
+            if category in self.resource_preferences:
+                return float(self.resource_preferences[category])
+            category_key = f"category:{category}"
+            if category_key in self.resource_preferences:
+                return float(self.resource_preferences[category_key])
+        return float(self.resource_preferences.get("default", default))
+
+    def preferred_trade_good(self, fallback: str = "supplies") -> str:
+        """Return the most desired explicit resource for trading."""
+
+        best_resource = fallback
+        best_weight = float("-inf")
+        for resource, weight in self.resource_preferences.items():
+            if resource.startswith("category:"):
+                continue
+            if weight > best_weight:
+                best_resource = resource
+                best_weight = weight
+        if best_weight == float("-inf"):
+            return fallback
+        return best_resource
 
 
 class FactionDiplomacy:
@@ -254,16 +291,18 @@ class FactionAIController:
             site = sites.get(site_id)
             controlling = site.controlling_faction if site else None
             for caravan in caravans:
+                faction = self._factions.get(caravan.faction_name)
                 trade_value = caravan.unload_all_cargo()
                 if trade_value <= 0:
-                    caravan.add_cargo("supplies", self.rng.randint(1, 3))
+                    good = faction.preferred_trade_good() if faction else "supplies"
+                    caravan.add_cargo(good, self.rng.randint(1, 3))
                     continue
-                faction = self._factions.get(caravan.faction_name)
                 if faction is not None:
                     faction.adjust_resource("wealth", trade_value)
                 if controlling and controlling != caravan.faction_name:
                     self.diplomacy.adjust_standing(caravan.faction_name, controlling, 2.0)
-                caravan.add_cargo("supplies", max(1, trade_value // 2))
+                restock_type = faction.preferred_trade_good() if faction else "supplies"
+                caravan.add_cargo(restock_type, max(1, trade_value // 2))
 
     def _resolve_conflicts(self, sites: Mapping[str, Site]) -> None:
         caravans_by_site: Dict[str, List[Caravan]] = {}
@@ -325,4 +364,6 @@ __all__ = [
     "Faction",
     "FactionDiplomacy",
     "FactionAIController",
+    "TradeInterface",
+    "TradeOffer",
 ]

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Literal
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 from ..events.event_queue import EventQueue, QueuedEvent
 from ..time.season_tracker import SeasonProfile, SeasonTracker
 from ..truck import MaintenanceReport, Truck
+
+from .resource_pipeline import ResourcePipeline
 
 CommandPayload = Dict[str, Any]
 PhaseName = Literal["command", "travel", "site", "maintenance", "faction"]
@@ -53,9 +55,16 @@ class TurnEngine:
         "faction",
     ]
 
-    def __init__(self, season_tracker: SeasonTracker, event_queue: EventQueue) -> None:
+    def __init__(
+        self,
+        season_tracker: SeasonTracker,
+        event_queue: EventQueue,
+        *,
+        resource_pipeline: Optional[ResourcePipeline] = None,
+    ) -> None:
         self.season_tracker = season_tracker
         self.event_queue = event_queue
+        self._resource_pipeline = resource_pipeline
         self._phase_handlers: Dict[PhaseName, List[PhaseHandler]] = {
             phase: [] for phase in self.PHASE_ORDER
         }
@@ -64,6 +73,9 @@ class TurnEngine:
         # appended by the embedding game code.
         self.register_handler("maintenance", self._default_maintenance_handler)
         self.register_handler("faction", self._default_faction_handler)
+        if self._resource_pipeline is not None:
+            self.register_handler("command", self._resource_command_handler)
+            self.register_handler("site", self._resource_site_handler)
 
     def register_handler(self, phase: PhaseName, handler: PhaseHandler) -> None:
         """Register a callback for a specific phase."""
@@ -121,4 +133,14 @@ class TurnEngine:
             "maintenance_reports", []
         )
         reports.append(report)
+
+    def _resource_command_handler(self, context: TurnContext) -> None:
+        if self._resource_pipeline is None:
+            return
+        self._resource_pipeline.process_crew_actions(context)
+
+    def _resource_site_handler(self, context: TurnContext) -> None:
+        if self._resource_pipeline is None:
+            return
+        self._resource_pipeline.process_site_exploitation(context)
 

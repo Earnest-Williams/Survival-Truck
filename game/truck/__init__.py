@@ -1,5 +1,14 @@
 """Domain models for the modular survival truck."""
 
+from .inventory import (
+    InsufficientInventoryError,
+    Inventory,
+    InventoryCapacityError,
+    InventoryItem,
+    InventoryItemNotFoundError,
+    ItemCategory,
+    SpoilageState,
+)
 from .models import (
     CrewOverloadError,
     Dimensions,
@@ -20,4 +29,11 @@ __all__ = [
     "Truck",
     "TruckModule",
     "TruckStats",
+    "InsufficientInventoryError",
+    "Inventory",
+    "InventoryCapacityError",
+    "InventoryItem",
+    "InventoryItemNotFoundError",
+    "ItemCategory",
+    "SpoilageState",
 ]
