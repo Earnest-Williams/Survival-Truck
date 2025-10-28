@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import random
 from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional
+
+from numpy.random import Generator
 
 from .sites import Site
 
@@ -100,12 +101,12 @@ class SettlementManager:
         self,
         settlements: Iterable[Settlement] | None = None,
         *,
-        rng: random.Random | None = None,
+        rng: Generator | None = None,
     ) -> None:
         self._settlements: Dict[str, Settlement] = {
             settlement.identifier: settlement for settlement in (settlements or [])
         }
-        self.rng = rng or random.Random()
+        self.rng = rng
         self._counter = 0
 
     @property
@@ -127,7 +128,14 @@ class SettlementManager:
         self._counter += 1
         identifier = site.settlement_id or f"{site.identifier}-settlement-{self._counter}"
         name = base_name or f"{site.identifier.title()} Haven"
-        population = initial_population or site.population or self.rng.randint(15, 30)
+        if initial_population is not None:
+            population = initial_population
+        elif site.population:
+            population = site.population
+        elif self.rng is not None:
+            population = int(self.rng.integers(15, 31))
+        else:
+            population = 20
         settlement = Settlement(
             identifier=identifier,
             site_id=site.identifier,
