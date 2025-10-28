@@ -58,6 +58,10 @@ class TurnEngine:
         self._phase_handlers: Dict[PhaseName, List[PhaseHandler]] = {
             phase: [] for phase in self.PHASE_ORDER
         }
+        # Ensure NPC factions act even if the caller does not explicitly
+        # register a handler. Additional handlers can still be appended by
+        # the embedding game code.
+        self.register_handler("faction", self._default_faction_handler)
 
     def register_handler(self, phase: PhaseName, handler: PhaseHandler) -> None:
         """Register a callback for a specific phase."""
@@ -91,4 +95,14 @@ class TurnEngine:
 
     def has_pending_events(self) -> bool:
         return self.event_queue.has_events()
+
+    def _default_faction_handler(self, context: TurnContext) -> None:
+        """Drive faction AI stored in the world state if present."""
+
+        controller = context.world_state.get("faction_controller")
+        if controller is None:
+            return
+        run_turn = getattr(controller, "run_turn", None)
+        if callable(run_turn):
+            run_turn(world_state=context.world_state, day=context.day)
 
