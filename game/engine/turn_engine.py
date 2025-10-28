@@ -7,7 +7,6 @@ from typing import Any, Callable, Dict, Iterable, List, Literal, Mapping, Option
 
 from ..events.event_queue import EventQueue, QueuedEvent
 from ..time.season_tracker import SeasonProfile, SeasonTracker
-from ..truck import MaintenanceReport, Truck
 from ..ui.channels import (
     NotificationChannel,
     NotificationRecord,
@@ -15,6 +14,16 @@ from ..ui.channels import (
 )
 
 from .resource_pipeline import ResourcePipeline
+from .world import (
+    CrewAdvancementSystem,
+    CrewComponent,
+    FactionAISystem,
+    FactionControllerComponent,
+    GameWorld,
+    SitesComponent,
+    TruckComponent,
+    TruckMaintenanceSystem,
+)
 
 CommandPayload = Dict[str, Any]
 PhaseName = Literal["command", "travel", "site", "maintenance", "faction"]
@@ -30,6 +39,7 @@ class TurnContext:
     command: CommandPayload
     events: List[QueuedEvent]
     world_state: Dict[str, Any]
+    world: GameWorld
     _schedule_callback: Callable[[int, str, Dict[str, Any] | None], None]
     log_channel: TurnLogChannel | None = None
     notification_channel: NotificationChannel | None = None
@@ -93,12 +103,14 @@ class TurnEngine:
         resource_pipeline: Optional[ResourcePipeline] = None,
         log_channel: Optional[TurnLogChannel] = None,
         notification_channel: Optional[NotificationChannel] = None,
+        world: Optional[GameWorld] = None,
     ) -> None:
         self.season_tracker = season_tracker
         self.event_queue = event_queue
         self._resource_pipeline = resource_pipeline
         self._log_channel = log_channel
         self._notification_channel = notification_channel
+        self.world = world or GameWorld()
         self._phase_handlers: Dict[PhaseName, List[PhaseHandler]] = {
             phase: [] for phase in self.PHASE_ORDER
         }
@@ -106,11 +118,7 @@ class TurnEngine:
         # not explicitly register handlers. Additional handlers can still be
         # appended by the embedding game code.
         self.register_handler("command", self._default_command_handler)
-        self.register_handler("maintenance", self._default_maintenance_handler)
-        self.register_handler("faction", self._default_faction_handler)
-        if self._resource_pipeline is not None:
-            self.register_handler("command", self._resource_command_handler)
-            self.register_handler("site", self._resource_site_handler)
+        self._register_default_systems()
 
     def register_handler(self, phase: PhaseName, handler: PhaseHandler) -> None:
         """Register a callback for a specific phase."""
@@ -125,13 +133,16 @@ class TurnEngine:
         current_day = self.season_tracker.current_day
         season = self.season_tracker.current_season
         events_today = list(self.event_queue.pop_events_for_day(current_day))
+        state = world_state or {}
+        self._sync_world_bindings(state)
 
         context = TurnContext(
             day=current_day,
             season=season,
             command=command,
             events=events_today,
-            world_state=world_state or {},
+            world_state=state,
+            world=self.world,
             _schedule_callback=self.event_queue.schedule,
             log_channel=self._log_channel,
             notification_channel=self._notification_channel,
@@ -140,6 +151,7 @@ class TurnEngine:
         for phase in self.PHASE_ORDER:
             for handler in self._phase_handlers[phase]:
                 handler(context)
+            self.world.process_phase(phase, context)
 
         self.season_tracker.advance_day()
         self._record_turn(context)
@@ -147,40 +159,6 @@ class TurnEngine:
 
     def has_pending_events(self) -> bool:
         return self.event_queue.has_events()
-
-    def _default_faction_handler(self, context: TurnContext) -> None:
-        """Drive faction AI stored in the world state if present."""
-
-        controller = context.world_state.get("faction_controller")
-        if controller is None:
-            return
-        run_turn = getattr(controller, "run_turn", None)
-        if callable(run_turn):
-            run_turn(world_state=context.world_state, day=context.day)
-
-    def _default_maintenance_handler(self, context: TurnContext) -> None:
-        """Apply daily maintenance to the player's truck if present."""
-
-        truck = context.world_state.get("truck")
-        if not isinstance(truck, Truck):
-            return
-
-        maintenance_points = int(context.command.get("maintenance_points", 0) or 0)
-        report: MaintenanceReport = truck.run_maintenance_cycle(maintenance_points)
-        reports: List[MaintenanceReport] = context.world_state.setdefault(
-            "maintenance_reports", []
-        )
-        reports.append(report)
-
-    def _resource_command_handler(self, context: TurnContext) -> None:
-        if self._resource_pipeline is None:
-            return
-        self._resource_pipeline.process_crew_actions(context)
-
-    def _resource_site_handler(self, context: TurnContext) -> None:
-        if self._resource_pipeline is None:
-            return
-        self._resource_pipeline.process_site_exploitation(context)
 
     def _default_command_handler(self, context: TurnContext) -> None:
         command = context.command
@@ -262,4 +240,68 @@ class TurnEngine:
         if context.scheduled_events:
             parts.append(f"Scheduled {len(context.scheduled_events)} future event(s)")
         return " | ".join(parts)
+
+    # ------------------------------------------------------------------
+    def _register_default_systems(self) -> None:
+        if not self.world.has_system_type(CrewAdvancementSystem):
+            self.world.register_system(
+                "maintenance",
+                CrewAdvancementSystem(),
+                priority=50,
+            )
+        if not self.world.has_system_type(TruckMaintenanceSystem):
+            self.world.register_system(
+                "maintenance",
+                TruckMaintenanceSystem(),
+                priority=100,
+            )
+        if not self.world.has_system_type(FactionAISystem):
+            self.world.register_system("faction", FactionAISystem(), priority=100)
+        if self._resource_pipeline is not None:
+            if not self.world.has_system_type(_CrewActionSystem):
+                self.world.register_system(
+                    "command",
+                    _CrewActionSystem(self._resource_pipeline),
+                    priority=150,
+                )
+            if not self.world.has_system_type(_SiteExploitationSystem):
+                self.world.register_system(
+                    "site",
+                    _SiteExploitationSystem(self._resource_pipeline),
+                    priority=100,
+                )
+
+    def _sync_world_bindings(self, world_state: Dict[str, Any]) -> None:
+        bindings: List[tuple[type, str, str]] = [
+            (TruckComponent, "truck", "truck"),
+            (CrewComponent, "crew", "crew"),
+            (FactionControllerComponent, "faction_controller", "controller"),
+            (SitesComponent, "sites", "sites"),
+        ]
+        for component_type, key, attr in bindings:
+            component = self.world.get_singleton(component_type)
+            if component is None:
+                world_state.pop(key, None)
+                continue
+            world_state[key] = getattr(component, attr)
+
+
+class _CrewActionSystem:
+    """Wrapper system delegating crew resource actions to the pipeline."""
+
+    def __init__(self, pipeline: ResourcePipeline) -> None:
+        self._pipeline = pipeline
+
+    def process(self, world: GameWorld, context: TurnContext) -> None:
+        self._pipeline.process_crew_actions(context)
+
+
+class _SiteExploitationSystem:
+    """Wrapper system delegating site exploitation to the pipeline."""
+
+    def __init__(self, pipeline: ResourcePipeline) -> None:
+        self._pipeline = pipeline
+
+    def process(self, world: GameWorld, context: TurnContext) -> None:
+        self._pipeline.process_site_exploitation(context)
 

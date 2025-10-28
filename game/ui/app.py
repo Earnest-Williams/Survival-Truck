@@ -10,14 +10,24 @@ from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import Footer, Header
 
+from ..crew import Crew
 from ..engine.turn_engine import TurnContext, TurnEngine
 from ..engine.resource_pipeline import ResourcePipeline
+from ..engine.world import (
+    CrewComponent,
+    FactionControllerComponent,
+    GameWorld,
+    SitesComponent,
+    TruckComponent,
+)
 from ..events.event_queue import EventQueue
+from ..factions import FactionAIController
 from ..time.season_tracker import SeasonTracker
 from ..truck import Dimensions, Truck, TruckModule
 from ..truck.inventory import Inventory, InventoryItem, ItemCategory
 from ..world.map import BiomeNoise, HexCoord
 from ..world.rng import WorldRandomness
+from ..world.sites import Site
 from .channels import NotificationChannel, TurnLogChannel
 from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
@@ -106,6 +116,9 @@ class SurvivalTruckApp(App):
         self.world_randomness = WorldRandomness(seed=config.world_seed)
         self.world_state.setdefault("randomness", self.world_randomness)
 
+        self.world = turn_engine.world if turn_engine is not None else GameWorld()
+        self._bootstrap_world_components()
+
         self.event_queue = EventQueue()
         self.season_tracker = SeasonTracker()
         self.turn_engine = turn_engine or TurnEngine(
@@ -114,7 +127,11 @@ class SurvivalTruckApp(App):
             resource_pipeline=ResourcePipeline(rng=self.world_randomness.generator("resources")),
             log_channel=self.log_channel,
             notification_channel=self.notification_channel,
+            world=self.world,
         )
+        if turn_engine is not None:
+            self.world = self.turn_engine.world
+            self._bootstrap_world_components()
 
         self.map_view = HexMapView(grid=self._map_data)
         self.dashboard = DashboardView(notification_channel=self.notification_channel)
@@ -136,6 +153,36 @@ class SurvivalTruckApp(App):
         self._refresh_ui()
 
     # ------------------------------------------------------------------
+    def _bootstrap_world_components(self) -> None:
+        truck = self.world_state.get("truck")
+        if isinstance(truck, Truck):
+            self.world.add_singleton(TruckComponent(truck))
+            self.world_state["truck"] = truck
+        crew_obj = self.world_state.get("crew")
+        if not isinstance(crew_obj, Crew):
+            crew_obj = Crew()
+            self.world_state["crew"] = crew_obj
+        self.world.add_singleton(CrewComponent(crew_obj))
+
+        controller = self.world_state.get("faction_controller")
+        if not isinstance(controller, FactionAIController):
+            controller = FactionAIController()
+            self.world_state["faction_controller"] = controller
+        self.world.add_singleton(FactionControllerComponent(controller))
+
+        sites_obj = self.world_state.get("sites")
+        sites_map: MutableMapping[str, Site]
+        if isinstance(sites_obj, MutableMapping):
+            filtered: Dict[str, Site] = {}
+            for key, value in sites_obj.items():
+                if isinstance(key, str) and isinstance(value, Site):
+                    filtered[key] = value
+            sites_map = filtered
+        else:
+            sites_map = {}
+        self.world_state["sites"] = sites_map
+        self.world.add_singleton(SitesComponent(sites_map))
+
     def action_next_turn(self) -> None:
         command = self.control_panel.build_command_payload()
         context = self.turn_engine.run_turn(command, world_state=self.world_state)
@@ -172,11 +219,9 @@ class SurvivalTruckApp(App):
         self.map_view.set_map_data(self._map_data)
         self._update_map_highlights()
 
-        truck = self.world_state.get("truck")
-        if isinstance(truck, Truck):
-            self.truck_view.set_truck(truck)
-        else:
-            self.truck_view.set_truck(None)
+        truck_component = self.turn_engine.world.get_singleton(TruckComponent)
+        truck = truck_component.truck if truck_component is not None else None
+        self.truck_view.set_truck(truck if isinstance(truck, Truck) else None)
 
         stats = self._build_stats(context)
         self.dashboard.update_stats(stats)
@@ -203,7 +248,8 @@ class SurvivalTruckApp(App):
             "Day": str(self.season_tracker.current_day),
             "Season": self.season_tracker.current_season.name.title(),
         }
-        truck = self.world_state.get("truck")
+        truck_component = self.turn_engine.world.get_singleton(TruckComponent)
+        truck = truck_component.truck if truck_component is not None else None
         if isinstance(truck, Truck):
             stats["Truck"] = f"{truck.condition:.0%} condition"
             stats["Crew"] = f"{truck.current_crew_workload}/{truck.crew_capacity}"
