@@ -104,21 +104,21 @@ class AttentionCurveModel(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    base: float = 0.0
-    growth: float = 0.0
-    decay: float = 0.0
+    peak: float = 1.0
+    mu: float = 50.0
+    sigma: float = Field(default=15.0, gt=0.0)
 
-    @field_validator("base", "growth", "decay")
+    @field_validator("peak", "mu", "sigma")
     @classmethod
     def _coerce_float(cls, value: float) -> float:
         return float(value)
 
     @classmethod
     def from_domain(cls, curve: AttentionCurve) -> "AttentionCurveModel":
-        return cls(base=curve.base, growth=curve.growth, decay=curve.decay)
+        return cls(peak=curve.peak, mu=curve.mu, sigma=curve.sigma)
 
     def to_domain(self) -> AttentionCurve:
-        return AttentionCurve(base=self.base, growth=self.growth, decay=self.decay)
+        return AttentionCurve(peak=self.peak, mu=self.mu, sigma=self.sigma)
 
 
 class SiteSnapshot(BaseModel):
