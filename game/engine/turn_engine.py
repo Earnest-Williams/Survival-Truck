@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Iterable, List, Literal, Mapping, Option
 
 from ..events.event_queue import EventQueue, QueuedEvent
 from ..time.season_tracker import SeasonProfile, SeasonTracker
+from ..time.weather import WeatherCondition, WeatherSystem
 from ..ui.channels import (
     NotificationChannel,
     NotificationRecord,
@@ -36,6 +37,7 @@ class TurnContext:
 
     day: int
     season: SeasonProfile
+    weather: WeatherCondition
     command: CommandPayload
     events: List[QueuedEvent]
     world_state: Dict[str, Any]
@@ -64,6 +66,29 @@ class TurnContext:
 
     def log(self, message: str) -> None:
         self.summary_lines.append(str(message))
+
+    # ------------------------------------------------------------------
+    @property
+    def travel_modifier(self) -> float:
+        """Combined travel modifier from seasonal and weather effects."""
+
+        return self.season.movement_cost_multiplier * self.weather.travel_cost_multiplier
+
+    @property
+    def maintenance_modifier(self) -> float:
+        """Combined maintenance modifier from seasonal and weather effects."""
+
+        return self.season.resource_cost_multiplier * self.weather.maintenance_cost_multiplier
+
+    def travel_cost_for(self, base_cost: float) -> float:
+        """Apply travel modifiers to ``base_cost``."""
+
+        return base_cost * self.travel_modifier
+
+    def maintenance_cost_for(self, base_cost: float) -> float:
+        """Apply maintenance modifiers to ``base_cost``."""
+
+        return base_cost * self.maintenance_modifier
 
     def notify(
         self,
@@ -101,6 +126,7 @@ class TurnEngine:
         event_queue: EventQueue,
         *,
         resource_pipeline: Optional[ResourcePipeline] = None,
+        weather_system: Optional[WeatherSystem] = None,
         log_channel: Optional[TurnLogChannel] = None,
         notification_channel: Optional[NotificationChannel] = None,
         world: Optional[GameWorld] = None,
@@ -111,6 +137,11 @@ class TurnEngine:
         self._log_channel = log_channel
         self._notification_channel = notification_channel
         self.world = world or GameWorld()
+        season = self.season_tracker.current_season
+        self.weather_system = weather_system or WeatherSystem(
+            starting_day=self.season_tracker.current_day,
+            starting_season=season.name,
+        )
         self._phase_handlers: Dict[PhaseName, List[PhaseHandler]] = {
             phase: [] for phase in self.PHASE_ORDER
         }
@@ -135,10 +166,13 @@ class TurnEngine:
         events_today = list(self.event_queue.pop_events_for_day(current_day))
         state = world_state or {}
         self._sync_world_bindings(state)
+        weather = self.weather_system.current_condition
+        self._record_weather_state(state, weather, current_day)
 
         context = TurnContext(
             day=current_day,
             season=season,
+            weather=weather,
             command=command,
             events=events_today,
             world_state=state,
@@ -154,6 +188,8 @@ class TurnEngine:
             self.world.process_phase(phase, context)
 
         self.season_tracker.advance_day()
+        next_season = self.season_tracker.current_season
+        self.weather_system.advance_day(season=next_season.name)
         self._record_turn(context)
         return context
 
@@ -242,6 +278,20 @@ class TurnEngine:
         return " | ".join(parts)
 
     # ------------------------------------------------------------------
+    def _record_weather_state(self, world_state: Dict[str, Any], weather: WeatherCondition, day: int) -> None:
+        record = {
+            "day": day,
+            "condition": weather.name,
+            "travel_modifier": weather.travel_cost_multiplier,
+            "maintenance_modifier": weather.maintenance_cost_multiplier,
+        }
+        world_state["weather"] = record
+        history = world_state.get("weather_history")
+        if not isinstance(history, list):
+            history = []
+        history.append(record.copy())
+        world_state["weather_history"] = history[-30:]
+
     def _register_default_systems(self) -> None:
         if not self.world.has_system_type(CrewAdvancementSystem):
             self.world.register_system(
