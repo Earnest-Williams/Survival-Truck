@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Mapping
@@ -23,26 +24,39 @@ class SiteType(str, Enum):
 
 @dataclass(frozen=True)
 class AttentionCurve:
-    """Parameters describing how a site's attention changes over time."""
+    """Gaussian parameters describing how a site's attention changes over time."""
 
-    base: float = 0.0
-    growth: float = 0.0
-    decay: float = 0.0
+    peak: float = 1.0
+    mu: float = 50.0
+    sigma: float = 15.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "peak", float(self.peak))
+        object.__setattr__(self, "mu", float(self.mu))
+        object.__setattr__(self, "sigma", float(self.sigma))
+        if self.sigma <= 0:
+            raise ValueError("sigma must be positive")
 
     def to_dict(self) -> Dict[str, float]:
         """Serialize the curve parameters into a mapping."""
 
-        return {"base": self.base, "growth": self.growth, "decay": self.decay}
+        return {"peak": self.peak, "mu": self.mu, "sigma": self.sigma}
 
     @staticmethod
     def from_dict(payload: Dict[str, float]) -> "AttentionCurve":
         """Create an :class:`AttentionCurve` instance from a mapping."""
 
         return AttentionCurve(
-            base=float(payload.get("base", 0.0)),
-            growth=float(payload.get("growth", 0.0)),
-            decay=float(payload.get("decay", 0.0)),
+            peak=float(payload.get("peak", 1.0)),
+            mu=float(payload.get("mu", 50.0)),
+            sigma=float(payload.get("sigma", 15.0)),
         )
+
+    def value_at(self, t: float) -> float:
+        """Evaluate the Gaussian profile at ``t``."""
+
+        exponent = -((float(t) - self.mu) ** 2) / (2 * self.sigma**2)
+        return self.peak * math.exp(exponent)
 
 
 @dataclass
@@ -71,6 +85,11 @@ class Site:
                 raise ValueError(f"Unknown site type: {self.site_type}") from exc
         if self.controlling_faction is not None:
             self.controlling_faction = str(self.controlling_faction)
+        if not isinstance(self.attention_curve, AttentionCurve):
+            if isinstance(self.attention_curve, Mapping):
+                self.attention_curve = AttentionCurve.from_dict(self.attention_curve)  # type: ignore[assignment]
+            else:
+                self.attention_curve = AttentionCurve()  # type: ignore[assignment]
         if self.settlement_id is not None and not isinstance(self.settlement_id, str):
             raise TypeError("settlement_id must be a string or None")
         self.connections = self._normalise_connections(self.identifier, self.connections)
@@ -180,12 +199,14 @@ class Site:
 
         if result.skill != SkillType.SCAVENGING:
             raise ValueError("resolve_scavenge_attempt requires a scavenging skill result")
-        progress = max(0.5, 4.0 + result.margin)
+        base_progress = max(0.5, 4.0 + result.margin)
+        intensity = max(0.05, self.attention_curve.value_at(self.scavenged_percent))
+        progress = base_progress * intensity
         if not result.success:
             progress *= 0.25
         self.record_scavenge(progress)
         if result.success and self.population > 0:
-            morale_boost = max(0, int(result.margin))
+            morale_boost = max(0, int(result.margin * max(1.0, intensity)))
             self.population = max(0, self.population + morale_boost)
         return progress
 
@@ -199,10 +220,20 @@ class Site:
             raise ValueError("resolve_negotiation_attempt requires a negotiation skill result")
         sway = max(-5.0, min(5.0, result.margin / 2))
         curve = self.attention_curve
+        influence = max(0.0, curve.value_at(self.exploration_percent))
+        peak_delta = sway * 0.05 * (1.0 + influence)
+        mu_delta = sway
+        sigma_factor = 1.0
+        margin_scale = min(0.5, abs(result.margin) * 0.02)
+        if result.success:
+            sigma_factor -= margin_scale
+        else:
+            sigma_factor += margin_scale
+        sigma_factor = max(0.5, sigma_factor)
         self.attention_curve = AttentionCurve(
-            base=max(0.0, curve.base + sway * 0.1),
-            growth=curve.growth,
-            decay=max(0.0, curve.decay - (result.margin if result.success else 0) * 0.01),
+            peak=max(0.1, curve.peak + peak_delta),
+            mu=max(0.0, min(100.0, curve.mu + mu_delta)),
+            sigma=max(1.0, curve.sigma * sigma_factor),
         )
         if result.success:
             self.controlling_faction = faction

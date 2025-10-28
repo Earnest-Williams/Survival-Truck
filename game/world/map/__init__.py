@@ -233,11 +233,11 @@ _SITE_TYPE_WEIGHTS: Dict[SiteType, float] = {
 }
 
 _SITE_ATTENTION_PROFILES: Dict[SiteType, tuple[float, float, float]] = {
-    SiteType.CITY: (2.0, 0.9, 0.2),
-    SiteType.FARM: (1.4, 0.6, 0.12),
-    SiteType.POWER_PLANT: (1.8, 0.7, 0.18),
-    SiteType.CAMP: (1.1, 0.5, 0.08),
-    SiteType.MILITARY_RUINS: (1.6, 0.8, 0.25),
+    SiteType.CITY: (2.4, 40.0, 16.0),
+    SiteType.FARM: (1.8, 28.0, 12.0),
+    SiteType.POWER_PLANT: (2.0, 32.0, 14.0),
+    SiteType.CAMP: (1.5, 22.0, 9.0),
+    SiteType.MILITARY_RUINS: (2.2, 35.0, 13.0),
 }
 
 _SITE_POPULATION_RANGES: Dict[SiteType, tuple[int, int]] = {
@@ -293,11 +293,11 @@ def generate_site_network(
     sites: Dict[str, Site] = {}
     for identifier in positions:
         site_type: SiteType = rng.choice(type_choices, p=probabilities)
-        base, growth, decay = _SITE_ATTENTION_PROFILES[site_type]
+        peak, mu, sigma = _SITE_ATTENTION_PROFILES[site_type]
         curve = AttentionCurve(
-            base=max(0.0, base + float(rng.uniform(-0.2, 0.2))),
-            growth=max(0.0, growth + float(rng.uniform(-0.1, 0.1))),
-            decay=max(0.01, decay + float(rng.uniform(-0.05, 0.05))),
+            peak=max(0.1, peak + float(rng.uniform(-0.2, 0.2))),
+            mu=max(0.0, mu + float(rng.uniform(-5.0, 5.0))),
+            sigma=max(1.0, sigma + float(rng.uniform(-2.0, 2.0))),
         )
         pop_low, pop_high = _SITE_POPULATION_RANGES[site_type]
         population = int(rng.integers(pop_low, pop_high + 1))

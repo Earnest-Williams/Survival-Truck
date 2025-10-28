@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from game.crew import SkillCheckResult, SkillType
 from game.world.config import DifficultyLevel, WorldConfig, WorldMapSettings, WorldRandomnessSettings
 from game.world.map import BiomeType, ChunkCoord, MapChunk, generate_site_network
 from game.world.persistence import (
@@ -39,7 +40,7 @@ def _make_site(
         population=12,
         exploration_percent=10.0,
         scavenged_percent=5.0,
-        attention_curve=AttentionCurve(base=1.0, growth=0.5, decay=0.1),
+        attention_curve=AttentionCurve(peak=1.6, mu=5.0, sigma=2.0),
         connections=connections or {},
     )
 
@@ -80,6 +81,7 @@ def test_world_snapshot_round_trip() -> None:
     assert restored_site.population == site.population
     assert restored_site.site_type is SiteType.CAMP
     assert restored_site.connections == {"delta": 2.0}
+    assert restored_site.attention_curve == site.attention_curve
 
     restored_state = snapshot.to_world_state()
     assert restored_state["notes"] == ["Arrived at camp"]
@@ -171,3 +173,37 @@ def test_site_generation_network_round_trip() -> None:
     graph = restored_state.get("site_graph")
     assert graph is not None
     assert set(graph["connections"]) == set(network.connections)
+
+
+def test_site_scavenge_uses_gaussian_profile() -> None:
+    site = _make_site()
+    site.scavenged_percent = site.attention_curve.mu
+    result = SkillCheckResult(
+        skill=SkillType.SCAVENGING,
+        difficulty=10.0,
+        roll=10.0,
+        success=True,
+        margin=0.0,
+        participants=(),
+    )
+    expected = max(0.5, 4.0 + result.margin) * max(0.05, site.attention_curve.value_at(site.scavenged_percent))
+    progress = site.resolve_scavenge_attempt(result)
+    assert pytest.approx(progress, rel=1e-6) == expected
+
+
+def test_negotiation_adjusts_gaussian_parameters() -> None:
+    site = _make_site()
+    before = site.attention_curve
+    result = SkillCheckResult(
+        skill=SkillType.NEGOTIATION,
+        difficulty=12.0,
+        roll=16.0,
+        success=True,
+        margin=4.0,
+        participants=("envoy",),
+    )
+    site.resolve_negotiation_attempt(result, faction="allies")
+    after = site.attention_curve
+    assert after.peak > before.peak
+    assert 0.0 <= after.mu <= 100.0
+    assert after.sigma <= before.sigma
