@@ -129,6 +129,7 @@ class SurvivalTruckApp(App):
             notification_channel=self.notification_channel,
             world=self.world,
         )
+        self.weather_system = self.turn_engine.weather_system
         if turn_engine is not None:
             self.world = self.turn_engine.world
             self._bootstrap_world_components()
