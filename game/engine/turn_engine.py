@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Literal
 
 from ..events.event_queue import EventQueue, QueuedEvent
 from ..time.season_tracker import SeasonProfile, SeasonTracker
+from ..truck import MaintenanceReport, Truck
 
 CommandPayload = Dict[str, Any]
 PhaseName = Literal["command", "travel", "site", "maintenance", "faction"]
@@ -58,9 +59,10 @@ class TurnEngine:
         self._phase_handlers: Dict[PhaseName, List[PhaseHandler]] = {
             phase: [] for phase in self.PHASE_ORDER
         }
-        # Ensure NPC factions act even if the caller does not explicitly
-        # register a handler. Additional handlers can still be appended by
-        # the embedding game code.
+        # Ensure baseline simulation behaviours occur even if the caller does
+        # not explicitly register handlers. Additional handlers can still be
+        # appended by the embedding game code.
+        self.register_handler("maintenance", self._default_maintenance_handler)
         self.register_handler("faction", self._default_faction_handler)
 
     def register_handler(self, phase: PhaseName, handler: PhaseHandler) -> None:
@@ -105,4 +107,18 @@ class TurnEngine:
         run_turn = getattr(controller, "run_turn", None)
         if callable(run_turn):
             run_turn(world_state=context.world_state, day=context.day)
+
+    def _default_maintenance_handler(self, context: TurnContext) -> None:
+        """Apply daily maintenance to the player's truck if present."""
+
+        truck = context.world_state.get("truck")
+        if not isinstance(truck, Truck):
+            return
+
+        maintenance_points = int(context.command.get("maintenance_points", 0) or 0)
+        report: MaintenanceReport = truck.run_maintenance_cycle(maintenance_points)
+        reports: List[MaintenanceReport] = context.world_state.setdefault(
+            "maintenance_reports", []
+        )
+        reports.append(report)
 
