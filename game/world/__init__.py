@@ -19,7 +19,7 @@ from .graph import (
 from .rng import WorldRandomness
 from .save_models import WorldSnapshot, WorldSnapshotMetadata
 from .settlements import Settlement, SettlementManager
-from .sites import AttentionCurve, Site
+from .sites import AttentionCurve, Site, SiteType
 
 __all__ = [
     "AttentionCurve",
@@ -31,6 +31,7 @@ __all__ = [
     "Settlement",
     "SettlementManager",
     "Site",
+    "SiteType",
     "hostile_factions",
     "path_travel_cost",
     "relationship",

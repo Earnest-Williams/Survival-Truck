@@ -9,6 +9,7 @@ from typing import Callable, ClassVar, Dict, Iterator, Mapping, MutableMapping, 
 from opensimplex import OpenSimplex
 
 from ..rng import WorldRandomness
+from ..sites import AttentionCurve, Site, SiteType
 
 
 class BiomeType(str, Enum):
@@ -196,6 +197,147 @@ class ChunkStreamer:
             yield from chunk.tiles()
 
 
+@dataclass
+class SiteNetwork:
+    """Generated site placements and their connectivity graph."""
+
+    sites: Dict[str, Site]
+    positions: Dict[str, HexCoord]
+    connections: Dict[str, Dict[str, float]]
+
+    def to_world_state(self) -> Dict[str, object]:
+        """Return a mapping ready to merge into persistent world state."""
+
+        position_payload = {
+            identifier: {"q": coord.q, "r": coord.r}
+            for identifier, coord in self.positions.items()
+        }
+        connection_payload = {
+            identifier: dict(neighbours) for identifier, neighbours in self.connections.items()
+        }
+        return {
+            "sites": self.sites,
+            "site_graph": {
+                "positions": position_payload,
+                "connections": connection_payload,
+            },
+        }
+
+
+_SITE_TYPE_WEIGHTS: Dict[SiteType, float] = {
+    SiteType.CITY: 0.18,
+    SiteType.FARM: 0.26,
+    SiteType.POWER_PLANT: 0.12,
+    SiteType.CAMP: 0.3,
+    SiteType.MILITARY_RUINS: 0.14,
+}
+
+_SITE_ATTENTION_PROFILES: Dict[SiteType, tuple[float, float, float]] = {
+    SiteType.CITY: (2.0, 0.9, 0.2),
+    SiteType.FARM: (1.4, 0.6, 0.12),
+    SiteType.POWER_PLANT: (1.8, 0.7, 0.18),
+    SiteType.CAMP: (1.1, 0.5, 0.08),
+    SiteType.MILITARY_RUINS: (1.6, 0.8, 0.25),
+}
+
+_SITE_POPULATION_RANGES: Dict[SiteType, tuple[int, int]] = {
+    SiteType.CITY: (500, 2500),
+    SiteType.FARM: (80, 400),
+    SiteType.POWER_PLANT: (40, 200),
+    SiteType.CAMP: (15, 120),
+    SiteType.MILITARY_RUINS: (0, 150),
+}
+
+
+def generate_site_network(
+    randomness: WorldRandomness,
+    *,
+    site_count: int = 8,
+    radius: int = 6,
+    center: HexCoord | None = None,
+) -> SiteNetwork:
+    """Procedurally place typed sites and build their connectivity graph."""
+
+    if site_count <= 0:
+        raise ValueError("site_count must be positive")
+    if radius <= 0:
+        raise ValueError("radius must be positive")
+    center = center or HexCoord(0, 0)
+    rng = randomness.generator("site-network")
+
+    positions: Dict[str, HexCoord] = {}
+    occupied: set[tuple[int, int]] = set()
+    attempts = 0
+    max_attempts = max(32, site_count * 20)
+    while len(positions) < site_count and attempts < max_attempts:
+        dq = int(rng.integers(-radius, radius + 1))
+        dr = int(rng.integers(-radius, radius + 1))
+        coord = center.translate(dq, dr)
+        if coord.distance_to(center) > radius:
+            attempts += 1
+            continue
+        key = (coord.q, coord.r)
+        if key in occupied:
+            attempts += 1
+            continue
+        identifier = f"site-{len(positions) + 1:02d}"
+        positions[identifier] = coord
+        occupied.add(key)
+    if len(positions) < site_count:
+        raise RuntimeError("failed to place the requested number of sites within radius")
+
+    weights_total = sum(_SITE_TYPE_WEIGHTS.values())
+    type_choices = list(_SITE_TYPE_WEIGHTS.keys())
+    probabilities = [weight / weights_total for weight in _SITE_TYPE_WEIGHTS.values()]
+
+    sites: Dict[str, Site] = {}
+    for identifier in positions:
+        site_type: SiteType = rng.choice(type_choices, p=probabilities)
+        base, growth, decay = _SITE_ATTENTION_PROFILES[site_type]
+        curve = AttentionCurve(
+            base=max(0.0, base + float(rng.uniform(-0.2, 0.2))),
+            growth=max(0.0, growth + float(rng.uniform(-0.1, 0.1))),
+            decay=max(0.01, decay + float(rng.uniform(-0.05, 0.05))),
+        )
+        pop_low, pop_high = _SITE_POPULATION_RANGES[site_type]
+        population = int(rng.integers(pop_low, pop_high + 1))
+        exploration = float(rng.uniform(0.0, 5.0))
+        scavenged = float(rng.uniform(0.0, 3.0))
+        sites[identifier] = Site(
+            identifier=identifier,
+            site_type=site_type,
+            exploration_percent=exploration,
+            scavenged_percent=scavenged,
+            population=population,
+            attention_curve=curve,
+        )
+
+    connections: Dict[str, Dict[str, float]] = {identifier: {} for identifier in positions}
+    for identifier, origin in positions.items():
+        neighbours = [
+            (other_id, origin.distance_to(target))
+            for other_id, target in positions.items()
+            if other_id != identifier
+        ]
+        neighbours.sort(key=lambda item: item[1])
+        max_edges = 2 if len(neighbours) > 2 else len(neighbours)
+        for neighbour_id, distance in neighbours[:max_edges]:
+            cost = float(max(1, distance))
+            connections[identifier][neighbour_id] = cost
+            connections.setdefault(neighbour_id, {})[identifier] = cost
+
+    for identifier, neighbours in connections.items():
+        site = sites[identifier]
+        for neighbour_id, cost in neighbours.items():
+            site.connect(neighbour_id, cost=cost)
+
+    ordered_connections = {
+        identifier: dict(sorted(neighbours.items())) for identifier, neighbours in connections.items()
+    }
+
+    return SiteNetwork(sites=sites, positions=positions, connections=ordered_connections)
+
+
 __all__ = [
     "BiomeType",
     "HexCoord",
@@ -204,4 +346,6 @@ __all__ = [
     "BiomeNoise",
     "ChunkGenerator",
     "ChunkStreamer",
+    "SiteNetwork",
+    "generate_site_network",
 ]
