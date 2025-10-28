@@ -164,7 +164,7 @@ class TurnEngine:
         current_day = self.season_tracker.current_day
         season = self.season_tracker.current_season
         events_today = list(self.event_queue.pop_events_for_day(current_day))
-        state = world_state or {}
+        state = world_state if world_state is not None else {}
         self._sync_world_bindings(state)
         weather = self.weather_system.current_condition
         self._record_weather_state(state, weather, current_day)
