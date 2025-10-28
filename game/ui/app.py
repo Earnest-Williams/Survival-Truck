@@ -11,11 +11,13 @@ from textual.containers import Container
 from textual.widgets import Footer, Header
 
 from ..engine.turn_engine import TurnContext, TurnEngine
+from ..engine.resource_pipeline import ResourcePipeline
 from ..events.event_queue import EventQueue
 from ..time.season_tracker import SeasonTracker
 from ..truck import Dimensions, Truck, TruckModule
 from ..truck.inventory import Inventory, InventoryItem, ItemCategory
 from ..world.map import BiomeNoise, HexCoord
+from ..world.rng import WorldRandomness
 from .channels import NotificationChannel, TurnLogChannel
 from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
@@ -28,6 +30,7 @@ class AppConfig:
 
     map_data: Sequence[Sequence[str]]
     world_state: MutableMapping[str, object]
+    world_seed: int = 42
 
 
 class SurvivalTruckApp(App):
@@ -100,12 +103,15 @@ class SurvivalTruckApp(App):
             config = self._create_demo_config()
         self._map_data: List[List[str]] = [list(row) for row in config.map_data]
         self.world_state: MutableMapping[str, object] = config.world_state
+        self.world_randomness = WorldRandomness(seed=config.world_seed)
+        self.world_state.setdefault("randomness", self.world_randomness)
 
         self.event_queue = EventQueue()
         self.season_tracker = SeasonTracker()
         self.turn_engine = turn_engine or TurnEngine(
             season_tracker=self.season_tracker,
             event_queue=self.event_queue,
+            resource_pipeline=ResourcePipeline(rng=self.world_randomness.generator("resources")),
             log_channel=self.log_channel,
             notification_channel=self.notification_channel,
         )
@@ -219,8 +225,9 @@ class SurvivalTruckApp(App):
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _create_demo_config(size: int = 9) -> AppConfig:
-        noise = BiomeNoise(seed=42)
+    def _create_demo_config(size: int = 9, seed: int = 42) -> AppConfig:
+        randomness = WorldRandomness(seed=seed)
+        noise = BiomeNoise(randomness=randomness)
         center = HexCoord(0, 0)
         half = size // 2
         grid: List[List[str]] = []
@@ -235,7 +242,7 @@ class SurvivalTruckApp(App):
         world_state: MutableMapping[str, object] = {
             "truck": SurvivalTruckApp._create_demo_truck(),
         }
-        return AppConfig(map_data=grid, world_state=world_state)
+        return AppConfig(map_data=grid, world_state=world_state, world_seed=seed)
 
     @staticmethod
     def _create_demo_truck() -> Truck:

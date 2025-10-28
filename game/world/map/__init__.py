@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, ClassVar, Dict, Iterator, Mapping, MutableMapping, Tuple
-import random
+
+from opensimplex import OpenSimplex
+
+from ..rng import WorldRandomness
 
 
 class BiomeType(str, Enum):
@@ -102,13 +105,25 @@ class MapChunk:
 class BiomeNoise:
     """Deterministic noise generator for biome classification."""
 
-    def __init__(self, seed: int) -> None:
-        self.seed = seed
+    def __init__(
+        self,
+        *,
+        randomness: WorldRandomness | None = None,
+        seed: int | None = None,
+        channel: str = "biome",
+        frequency: float = 0.1,
+    ) -> None:
+        if randomness is None:
+            if seed is None:
+                raise ValueError("Either randomness or seed must be provided")
+            randomness = WorldRandomness(seed=seed)
+        self._randomness = randomness
+        self._noise: OpenSimplex = randomness.noise(channel)
+        self._frequency = frequency
 
     def value(self, coord: HexCoord) -> float:
-        local_seed = hash((self.seed, coord.q, coord.r))
-        rng = random.Random(local_seed)
-        return rng.random()
+        sample = self._noise.noise2(coord.q * self._frequency, coord.r * self._frequency)
+        return 0.5 + 0.5 * sample
 
     def biome(self, coord: HexCoord) -> BiomeType:
         sample = self.value(coord)

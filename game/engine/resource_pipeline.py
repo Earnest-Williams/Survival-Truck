@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Mapping, Sequence
-import random
+
+from numpy.random import Generator
 
 from ..crew import Crew, NeedName, SkillCheckResult
 from ..truck import (
@@ -35,13 +36,13 @@ class ResourcePipeline:
         self,
         *,
         production_catalog: Mapping[str, InventoryItem] | None = None,
-        rng: random.Random | None = None,
+        rng: Generator | None = None,
     ) -> None:
         self.production_catalog: Dict[str, InventoryItem] = {
             key: value.clone(quantity=1.0)
             for key, value in (production_catalog or {}).items()
         }
-        self.rng = rng or random.Random()
+        self.rng = rng
 
     # ------------------------------------------------------------------
     def process_crew_actions(self, context: "TurnContext") -> None:
