@@ -9,7 +9,7 @@ from typing import Dict, List
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .map import BiomeType, ChunkCoord, MapChunk
-from .sites import AttentionCurve, Site
+from .sites import AttentionCurve, Site, SiteType
 
 _SIMPLE_TYPES = (str, int, float, bool)
 _DROP = object()
@@ -127,12 +127,14 @@ class SiteSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     identifier: str
+    site_type: SiteType = Field(default=SiteType.CAMP)
     exploration_percent: float = Field(default=0.0, ge=0.0, le=100.0)
     scavenged_percent: float = Field(default=0.0, ge=0.0, le=100.0)
     population: int = Field(default=0, ge=0)
     controlling_faction: str | None = None
     attention_curve: AttentionCurveModel = Field(default_factory=AttentionCurveModel)
     settlement_id: str | None = None
+    connections: Dict[str, float] = Field(default_factory=dict)
 
     @field_validator("controlling_faction", "settlement_id")
     @classmethod
@@ -141,27 +143,47 @@ class SiteSnapshot(BaseModel):
             return None
         return str(value)
 
+    @field_validator("connections", mode="before")
+    @classmethod
+    def _normalise_connections(cls, value: object) -> Dict[str, float]:
+        if value in (None, {}):
+            return {}
+        if not isinstance(value, Mapping):
+            raise TypeError("connections must be a mapping of site ids to costs")
+        normalised: Dict[str, float] = {}
+        for key, cost in value.items():
+            name = str(key)
+            cost_value = float(cost)
+            if cost_value < 0:
+                raise ValueError("connection cost cannot be negative")
+            normalised[name] = cost_value
+        return normalised
+
     @classmethod
     def from_site(cls, site: Site) -> "SiteSnapshot":
         return cls(
             identifier=site.identifier,
+            site_type=site.site_type,
             exploration_percent=site.exploration_percent,
             scavenged_percent=site.scavenged_percent,
             population=site.population,
             controlling_faction=site.controlling_faction,
             attention_curve=AttentionCurveModel.from_domain(site.attention_curve),
             settlement_id=site.settlement_id,
+            connections=site.connections,
         )
 
     def to_site(self) -> Site:
         return Site(
             identifier=self.identifier,
+            site_type=self.site_type,
             exploration_percent=self.exploration_percent,
             scavenged_percent=self.scavenged_percent,
             population=self.population,
             controlling_faction=self.controlling_faction,
             attention_curve=self.attention_curve.to_domain(),
             settlement_id=self.settlement_id,
+            connections=self.connections,
         )
 
 

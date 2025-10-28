@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict
+from enum import Enum
+from typing import Dict, Mapping
 
 from ..crew import SkillCheckResult, SkillType
+
+__all__ = ["AttentionCurve", "Site", "SiteType"]
+
+
+class SiteType(str, Enum):
+    """Enumeration of canonical site archetypes."""
+
+    CITY = "city"
+    FARM = "farm"
+    POWER_PLANT = "power_plant"
+    CAMP = "camp"
+    MILITARY_RUINS = "military_ruins"
 
 
 @dataclass(frozen=True)
@@ -37,22 +50,30 @@ class Site:
     """State tracked for a point of interest in the overworld."""
 
     identifier: str
+    site_type: SiteType = SiteType.CAMP
     exploration_percent: float = 0.0
     scavenged_percent: float = 0.0
     population: int = 0
     controlling_faction: str | None = None
     attention_curve: AttentionCurve = field(default_factory=AttentionCurve)
     settlement_id: str | None = None
+    connections: Dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.exploration_percent = self._clamp_percentage(self.exploration_percent)
         self.scavenged_percent = self._clamp_percentage(self.scavenged_percent)
         if self.population < 0:
             raise ValueError("population cannot be negative")
+        if not isinstance(self.site_type, SiteType):
+            try:
+                self.site_type = SiteType(str(self.site_type))  # type: ignore[assignment]
+            except ValueError as exc:  # pragma: no cover - defensive branch
+                raise ValueError(f"Unknown site type: {self.site_type}") from exc
         if self.controlling_faction is not None:
             self.controlling_faction = str(self.controlling_faction)
         if self.settlement_id is not None and not isinstance(self.settlement_id, str):
             raise TypeError("settlement_id must be a string or None")
+        self.connections = self._normalise_connections(self.identifier, self.connections)
 
     @staticmethod
     def _clamp_percentage(value: float) -> float:
@@ -75,12 +96,14 @@ class Site:
 
         return {
             "identifier": self.identifier,
+            "site_type": self.site_type.value,
             "exploration_percent": self.exploration_percent,
             "scavenged_percent": self.scavenged_percent,
             "population": self.population,
             "controlling_faction": self.controlling_faction,
             "attention_curve": self.attention_curve.to_dict(),
             "settlement_id": self.settlement_id,
+            "connections": dict(self.connections),
         }
 
     @staticmethod
@@ -101,6 +124,7 @@ class Site:
             raise ValueError("Serialized site payload missing 'identifier'")
         return Site(
             identifier=str(identifier),
+            site_type=payload.get("site_type", SiteType.CAMP),
             exploration_percent=float(payload.get("exploration_percent", 0.0)),
             scavenged_percent=float(payload.get("scavenged_percent", 0.0)),
             population=int(payload.get("population", 0)),
@@ -115,7 +139,38 @@ class Site:
                 if payload.get("settlement_id") is None
                 else str(payload.get("settlement_id"))
             ),
+            connections=payload.get("connections", {}),
         )
+
+    def connect(self, other: str, *, cost: float = 1.0) -> None:
+        """Record a travel connection to ``other`` with ``cost``."""
+
+        neighbour = str(other)
+        if neighbour == self.identifier:
+            return
+        cost_value = float(cost)
+        if cost_value < 0:
+            raise ValueError("connection cost cannot be negative")
+        self.connections[neighbour] = cost_value
+
+    @staticmethod
+    def _normalise_connections(identifier: str, data: Mapping[str, object] | object) -> Dict[str, float]:
+        if not data:
+            return {}
+        if not isinstance(data, Mapping):
+            raise TypeError("connections must be a mapping of site id to cost")
+        normalised: Dict[str, float] = {}
+        for neighbour, cost in data.items():
+            key = str(neighbour)
+            if not key:
+                continue
+            value = float(cost)
+            if value < 0:
+                raise ValueError("connection cost cannot be negative")
+            if key == identifier:
+                continue
+            normalised[key] = value
+        return normalised
 
     def resolve_scavenge_attempt(self, result: SkillCheckResult) -> float:
         """Apply the outcome of a scavenging skill check to this site.

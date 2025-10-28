@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from game.world.config import DifficultyLevel, WorldConfig, WorldMapSettings, WorldRandomnessSettings
-from game.world.map import BiomeType, ChunkCoord, MapChunk
+from game.world.map import BiomeType, ChunkCoord, MapChunk, generate_site_network
 from game.world.persistence import (
     create_world_engine,
     init_world_storage,
@@ -15,8 +15,9 @@ from game.world.persistence import (
     store_daily_diff,
     store_world_config,
 )
+from game.world.rng import WorldRandomness
 from game.world.save_models import WorldSnapshot
-from game.world.sites import AttentionCurve, Site
+from game.world.sites import AttentionCurve, Site, SiteType
 
 
 def _make_chunk() -> MapChunk:
@@ -26,13 +27,20 @@ def _make_chunk() -> MapChunk:
     return chunk
 
 
-def _make_site(identifier: str = "alpha") -> Site:
+def _make_site(
+    identifier: str = "alpha",
+    *,
+    site_type: SiteType = SiteType.CAMP,
+    connections: dict[str, float] | None = None,
+) -> Site:
     return Site(
         identifier=identifier,
+        site_type=site_type,
         population=12,
         exploration_percent=10.0,
         scavenged_percent=5.0,
         attention_curve=AttentionCurve(base=1.0, growth=0.5, decay=0.1),
+        connections=connections or {},
     )
 
 
@@ -52,7 +60,7 @@ def test_world_config_validation() -> None:
 
 def test_world_snapshot_round_trip() -> None:
     chunk = _make_chunk()
-    site = _make_site()
+    site = _make_site(connections={"delta": 2.0})
     world_state = {
         "notes": ["Arrived at camp"],
         "progress": {"scavenge": 2},
@@ -68,7 +76,10 @@ def test_world_snapshot_round_trip() -> None:
     assert restored_chunks[0].biome_at_local(1, 1) == BiomeType.FOREST
 
     restored_sites = snapshot.to_site_map()
-    assert restored_sites[site.identifier].population == site.population
+    restored_site = restored_sites[site.identifier]
+    assert restored_site.population == site.population
+    assert restored_site.site_type is SiteType.CAMP
+    assert restored_site.connections == {"delta": 2.0}
 
     restored_state = snapshot.to_world_state()
     assert restored_state["notes"] == ["Arrived at camp"]
@@ -90,29 +101,73 @@ def test_persistence_round_trip(tmp_path: Path) -> None:
     assert loaded_config == config
 
     chunk = _make_chunk()
-    site = _make_site("beta")
+    site_beta = _make_site("beta", site_type=SiteType.FARM, connections={"gamma": 3.0})
+    site_gamma = _make_site("gamma", site_type=SiteType.CITY, connections={"beta": 3.0})
     snapshot = WorldSnapshot.from_components(
         day=3,
         chunks=[chunk],
-        sites={site.identifier: site},
-        world_state={"notes": ["Camp established"]},
+        sites={site_beta.identifier: site_beta, site_gamma.identifier: site_gamma},
+        world_state={
+            "notes": ["Camp established"],
+            "site_graph": {
+                "connections": {
+                    site_beta.identifier: site_beta.connections,
+                    site_gamma.identifier: site_gamma.connections,
+                }
+            },
+        },
     )
     metadata = store_daily_diff(engine, "slot-a", snapshot)
     assert metadata.day == 3
-    assert metadata.site_count == 1
+    assert metadata.site_count == 2
 
     loaded = load_daily_diff(engine, "slot-a", 3)
     assert loaded is not None
     loaded_metadata, loaded_snapshot = loaded
     assert loaded_metadata.day == 3
-    assert loaded_metadata.site_count == 1
+    assert loaded_metadata.site_count == 2
 
     restored_state = loaded_snapshot.to_world_state()
     assert restored_state["notes"] == ["Camp established"]
-    assert "beta" in restored_state["sites"]
+    restored_sites = restored_state["sites"]
+    assert "beta" in restored_sites
+    assert "gamma" in restored_sites
+    assert restored_sites["beta"].site_type is SiteType.FARM
+    assert "gamma" in restored_sites["beta"].connections
+    assert restored_sites["gamma"].site_type is SiteType.CITY
+    assert "beta" in restored_sites["gamma"].connections
 
     records = list(iter_daily_diffs(engine, "slot-a"))
     assert len(records) == 1
     iter_metadata, iter_snapshot = records[0]
     assert iter_metadata == loaded_metadata
-    assert iter_snapshot.to_site_map()["beta"].identifier == "beta"
+    iter_sites = iter_snapshot.to_site_map()
+    assert iter_sites["beta"].identifier == "beta"
+    assert iter_sites["gamma"].connections == {"beta": 3.0}
+
+
+def test_site_generation_network_round_trip() -> None:
+    randomness = WorldRandomness(seed=77)
+    network = generate_site_network(randomness, site_count=4, radius=4)
+    assert len(network.sites) == 4
+    world_state = network.to_world_state()
+
+    snapshot = WorldSnapshot.from_components(
+        day=8,
+        chunks=[_make_chunk()],
+        sites=network.sites,
+        world_state=world_state,
+    )
+
+    restored_sites = snapshot.to_site_map()
+    assert len(restored_sites) == 4
+    for site in restored_sites.values():
+        assert isinstance(site.site_type, SiteType)
+        for neighbour, cost in site.connections.items():
+            assert neighbour in restored_sites
+            assert cost >= 1.0
+
+    restored_state = snapshot.to_world_state()
+    graph = restored_state.get("site_graph")
+    assert graph is not None
+    assert set(graph["connections"]) == set(network.connections)
