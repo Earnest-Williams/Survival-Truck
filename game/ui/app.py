@@ -356,7 +356,7 @@ class SurvivalTruckApp(App):
                 item_id="fuel",
                 name="Diesel",
                 category=ItemCategory.FUEL,
-                quantity=320.0,
+                quantity=150.0,
                 weight_per_unit=1.0,
                 volume_per_unit=1.0,
             )
