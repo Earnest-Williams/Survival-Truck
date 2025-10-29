@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Literal, Mapping
+from typing import Any, Callable, Dict, Iterable, List, Literal, Mapping, TYPE_CHECKING
 
 from ..events.event_queue import EventQueue, QueuedEvent
 from ..time.season_tracker import SeasonProfile, SeasonTracker
@@ -25,6 +25,37 @@ from .world import (
     TruckComponent,
     TruckMaintenanceSystem,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
+    from ..truck.models import TruckStats
+
+
+def compute_weight_power_factor(truck_stats: "TruckStats" | None) -> float:
+    """Return the travel modifier derived from truck weight and power."""
+
+    if truck_stats is None:
+        return 1.0
+
+    cargo_weight = float(getattr(truck_stats, "cargo_weight", 0.0) or 0.0)
+    weight_capacity = float(getattr(truck_stats, "weight_capacity", 0.0) or 0.0)
+    if weight_capacity > 0.0:
+        load_ratio = cargo_weight / weight_capacity
+    elif cargo_weight > 0.0:
+        load_ratio = cargo_weight / 1000.0
+    else:
+        load_ratio = 0.0
+    load_ratio = max(0.0, load_ratio)
+    weight_factor = 1.0 + min(load_ratio, 2.0)
+
+    power_output = float(getattr(truck_stats, "power_output", 0.0) or 0.0)
+    power_draw = float(getattr(truck_stats, "power_draw", 0.0) or 0.0)
+    base_power = max(power_output, 1.0)
+    net_power = power_output - power_draw
+    power_ratio = net_power / base_power
+    power_factor = max(0.5, 1.0 + power_ratio)
+
+    factor = weight_factor / power_factor
+    return max(0.25, min(factor, 4.0))
 
 CommandPayload = Dict[str, Any]
 PhaseName = Literal["command", "travel", "site", "maintenance", "faction"]
@@ -75,6 +106,12 @@ class TurnContext:
         return self.season.movement_cost_multiplier * self.weather.travel_cost_multiplier
 
     @property
+    def travel_load_factor(self) -> float:
+        """Additional travel modifier derived from truck weight and power."""
+
+        return compute_weight_power_factor(self._truck_stats())
+
+    @property
     def maintenance_modifier(self) -> float:
         """Combined maintenance modifier from seasonal and weather effects."""
 
@@ -83,7 +120,7 @@ class TurnContext:
     def travel_cost_for(self, base_cost: float) -> float:
         """Apply travel modifiers to ``base_cost``."""
 
-        return base_cost * self.travel_modifier
+        return base_cost * self.travel_modifier * self.travel_load_factor
 
     def maintenance_cost_for(self, base_cost: float) -> float:
         """Apply maintenance modifiers to ``base_cost``."""
@@ -107,6 +144,22 @@ class TurnContext:
         if self.notification_channel is not None:
             self.notification_channel.push(record)
         return record
+
+    # ------------------------------------------------------------------
+    def _truck_stats(self) -> "TruckStats" | None:
+        component = self.world.get_singleton(TruckComponent)
+        truck_obj: Any | None = None
+        if component is not None:
+            truck_obj = getattr(component, "truck", None)
+        if truck_obj is None:
+            truck_obj = self.world_state.get("truck")
+        stats = getattr(truck_obj, "stats", None)
+        if stats is None:
+            return None
+        required = ("cargo_weight", "weight_capacity", "power_output", "power_draw")
+        if all(hasattr(stats, attr) for attr in required):
+            return stats
+        return None
 
 
 class TurnEngine:
@@ -273,11 +326,13 @@ class TurnEngine:
         if base_cost < 0:
             return
 
+        load_factor = context.travel_load_factor
         adjusted_cost = context.travel_cost_for(base_cost)
         record = {
             "day": context.day,
             "base_cost": base_cost,
             "modifier": context.travel_modifier,
+            "load_factor": load_factor,
             "adjusted_cost": adjusted_cost,
         }
         travel_reports = context.world_state.setdefault("travel_reports", [])
@@ -285,7 +340,7 @@ class TurnEngine:
         context.world_state["last_travel_cost"] = record
         context.log(
             "Travel cost adjusted to "
-            f"{adjusted_cost:.2f} (base {base_cost:.2f}, modifier {context.travel_modifier:.2f})"
+            f"{adjusted_cost:.2f} (base {base_cost:.2f}, env {context.travel_modifier:.2f}, load {load_factor:.2f})"
         )
 
     def _record_turn(self, context: TurnContext) -> None:

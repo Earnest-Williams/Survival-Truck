@@ -7,10 +7,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from game.engine.turn_engine import TurnEngine
+from game.engine.turn_engine import TurnEngine, compute_weight_power_factor
 from game.events.event_queue import EventQueue
 from game.time.season_tracker import SeasonTracker
 from game.time.weather import WeatherCondition, WeatherSystem
+from game.truck.inventory import Inventory, InventoryItem, ItemCategory
 from game.truck.models import Dimensions, Truck
 from game.engine.world import TruckComponent
 
@@ -119,8 +120,62 @@ def test_travel_phase_applies_weather_modifier():
     assert entry["day"] == context.day
     assert entry["base_cost"] == pytest.approx(10.0)
     assert entry["modifier"] == pytest.approx(context.travel_modifier)
+    assert entry["load_factor"] == pytest.approx(context.travel_load_factor)
     assert entry["adjusted_cost"] == pytest.approx(context.travel_cost_for(10.0))
     assert world_state["last_travel_cost"] == entry
+
+
+def test_travel_cost_reflects_weight_and_power():
+    queue = EventQueue()
+    tracker = SeasonTracker(days_per_season=10)
+    calm = WeatherCondition("calm", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0)
+    weather_system = WeatherSystem(
+        seasonal_tables={
+            tracker.current_season.name: ((calm, 1.0),),
+        },
+        starting_day=tracker.current_day,
+        starting_season=tracker.current_season.name,
+    )
+
+    engine = TurnEngine(
+        season_tracker=tracker,
+        event_queue=queue,
+        weather_system=weather_system,
+    )
+
+    truck = Truck(
+        name="Hauler",
+        module_capacity=Dimensions(4, 2, 2),
+        crew_capacity=4,
+        base_power_output=18,
+        base_power_draw=6,
+        base_storage_capacity=120,
+        base_weight_capacity=2800.0,
+    )
+    truck.inventory = Inventory(max_weight=truck.weight_capacity, max_volume=truck.storage_capacity)
+    truck.inventory.add_item(
+        InventoryItem(
+            item_id="steel",
+            name="Steel Plates",
+            category=ItemCategory.MATERIALS,
+            quantity=700.0,
+            weight_per_unit=1.0,
+            volume_per_unit=1.0,
+        )
+    )
+    engine.world.add_singleton(TruckComponent(truck=truck))
+
+    command = {"route": {"waypoints": ["A", "B"], "base_cost": 20}}
+    world_state: dict[str, object] = {}
+    context = engine.run_turn(command, world_state=world_state)
+
+    expected_factor = compute_weight_power_factor(truck.stats)
+    assert context.travel_load_factor == pytest.approx(expected_factor)
+
+    expected_cost = 20.0 * context.travel_modifier * expected_factor
+    entry = world_state["travel_reports"][0]
+    assert entry["load_factor"] == pytest.approx(expected_factor)
+    assert entry["adjusted_cost"] == pytest.approx(expected_cost)
 
 
 def test_maintenance_modifier_increases_required_effort():
