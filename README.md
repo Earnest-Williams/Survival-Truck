@@ -54,7 +54,7 @@ numpy = "^2.1.1"
 opensimplex = "^0.4.5"
 pydantic = "^2.9.2"
 esper = "^2.5"
-transitions = "^0.9.2"
+polars = "^1.9.0"
 msgpack = "^1.0.8"
 zstandard = "^0.23.0"
 platformdirs = "^4.3.6"
@@ -87,16 +87,16 @@ pytest-cov = "^5.0.0"
 | ----------------------------- | ----------------------------- | ---------------------------------------------------------------- |
 | **TUI rendering**             | `textual`, `rich`             | Compose panes, widgets, and stylised terminal output.             |
 | **Graphs & pathfinding**      | `networkx`                    | Diplomacy graphs, logistics networks, and route calculations.     |
-| **Persistence / ORM**         | `sqlmodel`, `sqlalchemy`      | Typed models on SQLite backed by SQLAlchemy’s engine.             |
-| **Data validation**           | `pydantic`                    | Runtime-validated configs, saves, and schema definitions.         |
-| **ECS**                       | `esper`                       | Lightweight entity-component-system loop.                         |
-| **State machines**            | `transitions`                 | Declarative AI and UI flow charts.                                |
-| **RNG & numerics**            | `numpy`                       | Deterministic seeding and vectorised random draws.                |
-| **Noise fields**              | `opensimplex`                 | Procedural terrain and resource layers.                           |
-| **Serialization & compression** | `msgpack`, `zstandard`      | Compact, compressed world snapshots and diffs.                    |
-| **Config & save paths**       | `platformdirs`                | OS-appropriate locations for config, cache, and save data.        |
-| **Testing**                   | `pytest`, `pytest-cov`        | Core unit tests and coverage reporting.                           |
-| **Packaging**                 | `poetry`                      | Dependency management and application entry points.               |
+| **Persistence / ORM**         | `sqlmodel`, `sqlalchemy`      | Typed models on SQLite backed by SQLAlchemy’s engine. |
+| **Data validation**           | `pydantic`                    | Runtime-validated configs, saves, and schema definitions. |
+| **ECS**                       | `esper`                       | Lightweight entity-component-system loop. |
+| **State machines**            | `polars`                      | Data-driven tables driving AI state flow. |
+| **RNG & numerics**            | `numpy`                       | Deterministic seeding and vectorised random draws. |
+| **Noise fields**              | `opensimplex`                 | Procedural terrain and resource layers. |
+| **Serialization & compression** | `msgpack`, `zstandard`      | Compact, compressed world snapshots and diffs. |
+| **Config & save paths**       | `platformdirs`                | OS-appropriate locations for config, cache, and save data. |
+| **Testing**                   | `pytest`, `pytest-cov`        | Core unit tests and coverage reporting. |
+| **Packaging**                 | `poetry`                      | Dependency management and application entry points. |
 
 > Minimalism rule: prefer stdlib where feasible; add third-party only where it saves real time or improves clarity.
 
@@ -116,7 +116,7 @@ pytest-cov = "^5.0.0"
 * Entities in `esper` (truck, crew, sites, caravans, factions).
 * Systems run in order: movement → site exploitation → maintenance → diplomacy → events.
 * Scheduled effects in `heapq` (repairs complete on day N, storms arrive day M).
-* AI state machines with `transitions` consult `networkx` (routes/relations).
+* AI state flow uses Polars-driven tables and consults `networkx` (routes/relations).
 * Pathfinding via `networkx` weighted shortest paths over the hex graph.
 
 **Persistence**
@@ -347,7 +347,7 @@ class GameWorld:
 2. ECS core: movement, exploitation, maintenance.
 3. Textual map and panels with keyboard controls.
 4. Saves: SQLite indices + msgpack snapshots.
-5. Faction AI via `transitions` and NetworkX.
+5. Faction AI via Polars state tables and NetworkX.
 6. Balancing pass on attention curves and travel costs.
 7. Performance pass; optional worker offload.
 

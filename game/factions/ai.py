@@ -8,7 +8,7 @@ from typing import Dict, List, TypeAlias, TypedDict, cast
 
 import networkx as nx
 from numpy.random import Generator, default_rng
-from transitions import Machine
+import polars as pl
 
 from ..world.graph import (
     allied_factions,
@@ -61,25 +61,84 @@ class FactionAIController:
         self._pending_movements: Dict[str, List[CaravanRecord]] = {}
         self._state_path: List[str] = []
 
-        self._fsm = Machine(
-            model=self,
-            states=["patrol", "trade", "raid", "consolidate", "alliance"],
-            initial="patrol",
-            auto_transitions=False,
+        self._state_transitions = pl.DataFrame(
+            [
+                {
+                    "trigger": "advance_patrol",
+                    "source": "patrol",
+                    "target": "trade",
+                    "handler": "_state_patrol",
+                    "follow": "",
+                    "record": True,
+                },
+                {
+                    "trigger": "fallback_patrol",
+                    "source": "trade",
+                    "target": "patrol",
+                    "handler": "_state_trade",
+                    "follow": "",
+                    "record": True,
+                },
+                {
+                    "trigger": "process_trade",
+                    "source": "trade",
+                    "target": "raid",
+                    "handler": "_state_trade",
+                    "follow": "",
+                    "record": True,
+                },
+                {
+                    "trigger": "deescalate_trade",
+                    "source": "raid",
+                    "target": "trade",
+                    "handler": "_state_raid",
+                    "follow": "",
+                    "record": True,
+                },
+                {
+                    "trigger": "engage_raid",
+                    "source": "raid",
+                    "target": "consolidate",
+                    "handler": "_state_raid",
+                    "follow": "stabilize_consolidate",
+                    "record": True,
+                },
+                {
+                    "trigger": "stabilize_consolidate",
+                    "source": "consolidate",
+                    "target": "alliance",
+                    "handler": "_state_consolidate",
+                    "follow": "",
+                    "record": False,
+                },
+                {
+                    "trigger": "cool_alliance",
+                    "source": "alliance",
+                    "target": "consolidate",
+                    "handler": "_state_alliance",
+                    "follow": "",
+                    "record": True,
+                },
+                {
+                    "trigger": "refresh_alliance",
+                    "source": "alliance",
+                    "target": "patrol",
+                    "handler": "_state_alliance",
+                    "follow": "",
+                    "record": True,
+                },
+            ],
+            schema={
+                "trigger": pl.String,
+                "source": pl.String,
+                "target": pl.String,
+                "handler": pl.String,
+                "follow": pl.String,
+                "record": pl.Boolean,
+            },
         )
-        self._fsm.add_transition("advance_patrol", "patrol", "trade", before="_state_patrol")
-        self._fsm.add_transition("fallback_patrol", "trade", "patrol", before="_state_trade")
-        self._fsm.add_transition("process_trade", "trade", "raid", before="_state_trade")
-        self._fsm.add_transition("deescalate_trade", "raid", "trade", before="_state_raid")
-        self._fsm.add_transition("engage_raid", "raid", "consolidate", before="_state_raid")
-        self._fsm.add_transition(
-            "stabilize_consolidate",
-            "consolidate",
-            "alliance",
-            before="_state_consolidate",
-        )
-        self._fsm.add_transition("cool_alliance", "alliance", "consolidate", before="_state_alliance")
-        self._fsm.add_transition("refresh_alliance", "alliance", "patrol", before="_state_alliance")
+        self._state_df = pl.DataFrame({"state": ["patrol"]})
+        self._suppress_state_record = False
 
     # ------------------------------------------------------------------
     @property
@@ -89,6 +148,10 @@ class FactionAIController:
     @property
     def state_path(self) -> Sequence[str]:
         return tuple(self._state_path)
+
+    @property
+    def state(self) -> str:
+        return cast(str, self._state_df.get_column("state")[0])
 
     def get_or_create_faction(self, name: str) -> FactionRecord:
         return self.ledger.faction_record(name)
@@ -115,7 +178,59 @@ class FactionAIController:
 
     # ------------------------------------------------------------------
     def _record_state(self, state: str) -> None:
-        self._state_path.append(state)
+        if not self._suppress_state_record:
+            self._state_path.append(state)
+
+    def _set_state(self, state: str) -> None:
+        self._state_df = self._state_df.with_columns(pl.lit(str(state)).alias("state"))
+
+    def _apply_transition(self, trigger: str) -> None:
+        matches = self._state_transitions.filter(
+            (pl.col("trigger") == trigger) & (pl.col("source") == self.state)
+        )
+        if matches.is_empty():
+            return
+        row = matches.row(0, named=True)
+        handler_name = cast(str, row.get("handler", ""))
+        record_state = bool(row.get("record", True))
+        follow_up = cast(str, row.get("follow", ""))
+        if handler_name:
+            handler = getattr(self, handler_name, None)
+            if callable(handler):
+                original = self._suppress_state_record
+                if not record_state:
+                    self._suppress_state_record = True
+                try:
+                    handler()
+                finally:
+                    self._suppress_state_record = original
+        self._set_state(cast(str, row["target"]))
+        if follow_up:
+            self._apply_transition(follow_up)
+
+    def advance_patrol(self) -> None:
+        self._apply_transition("advance_patrol")
+
+    def fallback_patrol(self) -> None:
+        self._apply_transition("fallback_patrol")
+
+    def process_trade(self) -> None:
+        self._apply_transition("process_trade")
+
+    def deescalate_trade(self) -> None:
+        self._apply_transition("deescalate_trade")
+
+    def engage_raid(self) -> None:
+        self._apply_transition("engage_raid")
+
+    def stabilize_consolidate(self) -> None:
+        self._apply_transition("stabilize_consolidate")
+
+    def cool_alliance(self) -> None:
+        self._apply_transition("cool_alliance")
+
+    def refresh_alliance(self) -> None:
+        self._apply_transition("refresh_alliance")
 
     def _state_patrol(self) -> None:
         self._record_state("patrol")

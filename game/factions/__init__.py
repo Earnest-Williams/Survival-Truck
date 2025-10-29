@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, Iterator, Tuple
 
 from .state import CaravanRecord, FactionLedger, FactionRecord
+
+# Backwards-compatible handles used in tests and docs.
+Caravan = CaravanRecord
+Faction = FactionRecord
 
 
 @dataclass(slots=True)
@@ -16,9 +20,7 @@ class FactionDiplomacy:
     min_value: float = -100.0
     max_value: float = 100.0
     daily_decay: float = 0.2
-
-    def __post_init__(self) -> None:
-        self._relations: Dict[Tuple[str, str], float] = {}
+    _relations: Dict[Tuple[str, str], float] = field(init=False, default_factory=dict)
 
     def _key(self, faction_a: str, faction_b: str) -> Tuple[str, str]:
         if faction_a == faction_b:
@@ -83,6 +85,8 @@ from .ai import FactionAIController
 
 __all__ = [
     "CaravanRecord",
+    "Caravan",
+    "Faction",
     "FactionAIController",
     "FactionDiplomacy",
     "FactionLedger",
