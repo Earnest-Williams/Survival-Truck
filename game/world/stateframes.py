@@ -63,13 +63,21 @@ class SiteStateFrame:
         sites: pl.DataFrame | None = None,
         connections: pl.DataFrame | None = None,
     ) -> None:
-        self._sites = (sites or pl.DataFrame(schema=_SITE_FRAME_SCHEMA)).with_columns(
+        if sites is None:
+            site_frame = pl.DataFrame(schema=_SITE_FRAME_SCHEMA)
+        else:
+            site_frame = sites
+        self._sites = site_frame.with_columns(
             [
                 pl.col("controlling_faction").cast(pl.String, strict=False),
                 pl.col("settlement_id").cast(pl.String, strict=False),
             ]
         )
-        self._connections = connections or pl.DataFrame(schema=_CONNECTION_FRAME_SCHEMA)
+        self._connections = (
+            pl.DataFrame(schema=_CONNECTION_FRAME_SCHEMA)
+            if connections is None
+            else connections
+        )
 
     # ------------------------------------------------------------------
     @classmethod
@@ -133,6 +141,12 @@ class SiteStateFrame:
 
     def has_site(self, identifier: str) -> bool:
         return not self._sites.filter(pl.col("identifier") == identifier).is_empty()
+
+    def __getitem__(self, identifier: str) -> Site:
+        site = self.to_site(identifier)
+        if site is None:
+            raise KeyError(identifier)
+        return site
 
     def to_site(self, identifier: str) -> Site | None:
         match = self._sites.filter(pl.col("identifier") == identifier)

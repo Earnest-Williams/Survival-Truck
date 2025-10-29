@@ -1,5 +1,10 @@
 """World simulation domain models and utilities."""
 
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
+
 from .config import (
     BiomeWeighting,
     DifficultyLevel,
@@ -17,9 +22,10 @@ from .graph import (
     shortest_path_between_sites,
 )
 from .rng import WorldRandomness
-from .save_models import WorldSnapshot, WorldSnapshotMetadata
-from .settlements import Settlement, SettlementManager
-from .sites import AttentionCurve, Site, SiteType
+if TYPE_CHECKING:  # pragma: no cover - imported for type checkers only
+    from .sites import AttentionCurve, Site, SiteType
+    from .save_models import WorldSnapshot, WorldSnapshotMetadata
+    from .settlements import Settlement, SettlementManager
 
 __all__ = [
     "AttentionCurve",
@@ -43,3 +49,29 @@ __all__ = [
     "WorldSnapshot",
     "WorldSnapshotMetadata",
 ]
+
+_LAZY_EXPORTS = {
+    "AttentionCurve": ".sites",
+    "Site": ".sites",
+    "SiteType": ".sites",
+    "WorldSnapshot": ".save_models",
+    "WorldSnapshotMetadata": ".save_models",
+    "Settlement": ".settlements",
+    "SettlementManager": ".settlements",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily expose heavy world site models to avoid circular imports."""
+
+    module_name = _LAZY_EXPORTS.get(name)
+    if module_name is not None:
+        module = import_module(module_name, __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:  # pragma: no cover - trivial
+    return sorted(list(globals().keys()) + list(_LAZY_EXPORTS))

@@ -176,11 +176,8 @@ class Inventory:
 
     def _ensure_capacity(self, *, additional_weight: float, additional_volume: float) -> None:
         new_weight = self.total_weight + additional_weight
-        new_volume = self.total_volume + additional_volume
         if new_weight > self.max_weight + 1e-6:
             raise InventoryCapacityError("Cargo weight would exceed capacity")
-        if new_volume > self.max_volume + 1e-6:
-            raise InventoryCapacityError("Cargo volume would exceed capacity")
 
     # -- Mutation helpers ----------------------------------------------
     def add_item(self, item: InventoryItem, *, merge: bool = True) -> None:
