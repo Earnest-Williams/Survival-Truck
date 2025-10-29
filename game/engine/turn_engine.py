@@ -18,6 +18,7 @@ from .resource_pipeline import ResourcePipeline
 from .world import (
     CrewAdvancementSystem,
     CrewComponent,
+    DiplomacySystem,
     FactionAISystem,
     FactionControllerComponent,
     GameWorld,
@@ -58,7 +59,7 @@ def compute_weight_power_factor(truck_stats: "TruckStats" | None) -> float:
     return max(0.25, min(factor, 4.0))
 
 CommandPayload = Dict[str, Any]
-PhaseName = Literal["command", "travel", "site", "maintenance", "faction"]
+PhaseName = Literal["command", "travel", "site", "maintenance", "diplomacy", "faction"]
 PhaseHandler = Callable[["TurnContext"], None]
 
 
@@ -170,6 +171,7 @@ class TurnEngine:
         "travel",
         "site",
         "maintenance",
+        "diplomacy",
         "faction",
     ]
 
@@ -394,6 +396,12 @@ class TurnEngine:
             self.world.register_system(
                 "maintenance",
                 TruckMaintenanceSystem(),
+                priority=100,
+            )
+        if not self.world.has_system_type(DiplomacySystem):
+            self.world.register_system(
+                "diplomacy",
+                DiplomacySystem(),
                 priority=100,
             )
         if not self.world.has_system_type(FactionAISystem):
