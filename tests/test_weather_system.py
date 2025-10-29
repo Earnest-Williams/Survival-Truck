@@ -11,6 +11,8 @@ from game.engine.turn_engine import TurnEngine
 from game.events.event_queue import EventQueue
 from game.time.season_tracker import SeasonTracker
 from game.time.weather import WeatherCondition, WeatherSystem
+from game.truck.models import Dimensions, Truck
+from game.engine.world import TruckComponent
 
 
 def test_weather_system_respects_season_tables():
@@ -87,3 +89,75 @@ def test_turn_engine_records_weather_and_modifiers():
     )
     history_conditions = [entry["condition"] for entry in context_next.world_state["weather_history"]]
     assert history_conditions == ["clear", "storm"]
+
+
+def test_travel_phase_applies_weather_modifier():
+    queue = EventQueue()
+    tracker = SeasonTracker(days_per_season=10)
+    windy = WeatherCondition("windy", travel_cost_multiplier=1.4, maintenance_cost_multiplier=1.0)
+    weather_system = WeatherSystem(
+        seasonal_tables={
+            tracker.current_season.name: ((windy, 1.0),),
+        },
+        starting_day=tracker.current_day,
+        starting_season=tracker.current_season.name,
+    )
+
+    engine = TurnEngine(
+        season_tracker=tracker,
+        event_queue=queue,
+        weather_system=weather_system,
+    )
+
+    command = {"route": {"waypoints": ["A", "B"], "base_cost": 10}}
+    world_state: dict[str, object] = {}
+    context = engine.run_turn(command, world_state=world_state)
+
+    travel_reports = world_state["travel_reports"]
+    assert len(travel_reports) == 1
+    entry = travel_reports[0]
+    assert entry["day"] == context.day
+    assert entry["base_cost"] == pytest.approx(10.0)
+    assert entry["modifier"] == pytest.approx(context.travel_modifier)
+    assert entry["adjusted_cost"] == pytest.approx(context.travel_cost_for(10.0))
+    assert world_state["last_travel_cost"] == entry
+
+
+def test_maintenance_modifier_increases_required_effort():
+    queue = EventQueue()
+    tracker = SeasonTracker(days_per_season=10)
+    harsh = WeatherCondition("acid_rain", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.5)
+    weather_system = WeatherSystem(
+        seasonal_tables={
+            tracker.current_season.name: ((harsh, 1.0),),
+        },
+        starting_day=tracker.current_day,
+        starting_season=tracker.current_season.name,
+    )
+
+    engine = TurnEngine(
+        season_tracker=tracker,
+        event_queue=queue,
+        weather_system=weather_system,
+    )
+
+    truck = Truck(
+        name="Test Truck",
+        module_capacity=Dimensions(10, 10, 10),
+        crew_capacity=5,
+        base_power_output=0,
+        base_maintenance_load=12,
+    )
+    engine.world.add_singleton(TruckComponent(truck=truck))
+
+    command = {"maintenance_points": 12}
+    world_state: dict[str, object] = {}
+    context = engine.run_turn(command, world_state=world_state)
+
+    reports = world_state.get("maintenance_reports")
+    assert reports
+    report = reports[0]
+    assert report.cost_multiplier == pytest.approx(context.maintenance_modifier)
+    assert report.maintenance_applied == pytest.approx(12.0)
+    assert report.maintenance_required == pytest.approx(12.0 * context.maintenance_modifier)
+    assert report.shortfall == pytest.approx(report.maintenance_required - report.maintenance_applied)
