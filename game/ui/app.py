@@ -91,7 +91,8 @@ class SurvivalTruckApp(App):
     }
 
     TurnLogWidget {
-        grid-column: 1 / 3;
+        grid-column: 1;
+        column-span: 2;
         grid-row: 5;
         height: 1fr;
     }
