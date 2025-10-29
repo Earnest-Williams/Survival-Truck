@@ -55,45 +55,38 @@ class SurvivalTruckApp(App):
     }
 
     #body {
-        row: 2;
         layout: grid;
+        grid-size: 2 5;
         grid-columns: 3fr 2fr;
         grid-rows: auto auto auto auto 1fr;
         grid-gutter: 1;
         height: 1fr;
     }
 
+    /* TODO: Verify compose() order to achieve the intended cell placement.
+       Desired order:
+         1) HexMapView        (left column, rows 1–4 via row-span)
+         2) #status           (right column, row 1)
+         3) #diplomacy        (right column, row 2)
+         4) #truck            (right column, row 3)
+         5) #controls         (right column, row 4)
+         6) TurnLogWidget     (row 5, spans both columns)
+    */
     HexMapView {
-        column: 1;
-        row: 1;
         row-span: 4;
         height: 1fr;
     }
 
-    #status {
-        column: 2;
-        row: 1;
-    }
+    #status { }
 
-    #diplomacy {
-        column: 2;
-        row: 2;
-    }
+    #diplomacy { }
 
-    #truck {
-        column: 2;
-        row: 3;
-    }
+    #truck { }
 
-    #controls {
-        column: 2;
-        row: 4;
-    }
+    #controls { }
 
     TurnLogWidget {
-        column: 1;
         column-span: 2;
-        row: 5;
         height: 1fr;
     }
     """
