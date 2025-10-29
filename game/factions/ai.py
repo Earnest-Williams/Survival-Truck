@@ -7,6 +7,7 @@ import random
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
 import networkx as nx
+from transitions import Machine
 
 from ..world.graph import (
     allied_factions,
@@ -36,10 +37,38 @@ class FactionAIController:
         self._movement_graph: nx.Graph | None = movement_graph
         self._diplomacy_graph: nx.Graph | None = None
         self.rng = rng or random.Random()
+        self._current_sites: Mapping[str, Site] = {}
+        self._pending_movements: Dict[str, List[Caravan]] = {}
+        self._state_path: List[str] = []
+
+        self._fsm = Machine(
+            model=self,
+            states=["patrol", "trade", "raid", "alliance"],
+            initial="patrol",
+            auto_transitions=False,
+        )
+        self._fsm.add_transition(
+            "advance_patrol", "patrol", "trade", before="_state_patrol"
+        )
+        self._fsm.add_transition(
+            "process_trade", "trade", "raid", before="_state_trade"
+        )
+        self._fsm.add_transition(
+            "engage_raid", "raid", "alliance", before="_state_raid"
+        )
+        self._fsm.add_transition(
+            "refresh_alliance", "alliance", "patrol", before="_state_alliance"
+        )
 
     @property
     def factions(self) -> Mapping[str, Faction]:
         return self._factions
+
+    @property
+    def state_path(self) -> Sequence[str]:
+        """Return the last executed state path for debugging/tests."""
+
+        return tuple(self._state_path)
 
     def get_or_create_faction(self, name: str) -> Faction:
         if name not in self._factions:
@@ -58,10 +87,35 @@ class FactionAIController:
         self._movement_graph = self._refresh_movement_graph(world_state, sites)
         self._diplomacy_graph = self.diplomacy.as_graph(self._factions.keys())
 
+        self._current_sites = sites
+        self._pending_movements = {}
+        self._state_path.clear()
+
+        self.advance_patrol()
+        self.process_trade()
+        self.engage_raid()
+        self.refresh_alliance()
+
+    # ------------------------------------------------------------------
+    def _record_state(self, state: str) -> None:
+        self._state_path.append(state)
+
+    def _state_patrol(self) -> None:
+        self._record_state("patrol")
+        sites = self._current_sites
         self._sync_known_sites(sites)
-        movements = self._advance_caravans(sites)
-        self._handle_trade(movements, sites)
-        self._resolve_conflicts(sites)
+        self._pending_movements = self._advance_caravans(sites)
+
+    def _state_trade(self) -> None:
+        self._record_state("trade")
+        self._handle_trade(self._pending_movements, self._current_sites)
+
+    def _state_raid(self) -> None:
+        self._record_state("raid")
+        self._resolve_conflicts(self._current_sites)
+
+    def _state_alliance(self) -> None:
+        self._record_state("alliance")
         self.diplomacy.decay()
 
     # ------------------------------------------------------------------

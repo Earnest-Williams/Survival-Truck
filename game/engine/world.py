@@ -19,6 +19,40 @@ from typing import (  # noqa: D401 - aggregate re-export module
 
 import esper
 
+if hasattr(esper, "World"):
+    EsperWorld = esper.World
+else:  # pragma: no cover - fallback for stripped-down esper installs
+    class EsperWorld:
+        """Minimal stand-in for :class:`esper.World` used in tests."""
+
+        def __init__(self) -> None:
+            self._next_entity = 0
+            self._components: Dict[int, Dict[Type[object], object]] = {}
+
+        def create_entity(self, *components: object) -> int:
+            entity = self._next_entity
+            self._next_entity += 1
+            self._components[entity] = {}
+            for component in components:
+                self.add_component(entity, component)
+            return entity
+
+        def add_component(self, entity: int, component: object) -> None:
+            self._components.setdefault(entity, {})[type(component)] = component
+
+        def has_component(self, entity: int, component_type: Type[object]) -> bool:
+            return component_type in self._components.get(entity, {})
+
+        def remove_component(self, entity: int, component_type: Type[object]) -> None:
+            if entity in self._components:
+                self._components[entity].pop(component_type, None)
+
+        def component_for_entity(self, entity: int, component_type: Type[T]) -> T:
+            try:
+                return self._components[entity][component_type]  # type: ignore[return-value]
+            except KeyError as exc:  # pragma: no cover - defensive branch
+                raise KeyError(component_type) from exc
+
 from ..crew import Crew
 from ..factions import FactionAIController
 from ..truck import Truck
@@ -78,7 +112,7 @@ class GameWorld:
     """Wrapper around :class:`esper.World` providing ordered system execution."""
 
     def __init__(self) -> None:
-        self._world = esper.World()
+        self._world = EsperWorld()
         self._singletons: Dict[Type[Any], int] = {}
         self._systems: Dict[PhaseName, List[_SystemEntry]] = {}
         self._system_counter = 0
@@ -163,7 +197,7 @@ class GameWorld:
 
     # ------------------------------------------------------------------
     @property
-    def raw(self) -> esper.World:
+    def raw(self) -> EsperWorld:
         """Expose the underlying :class:`esper.World` instance."""
 
         return self._world
