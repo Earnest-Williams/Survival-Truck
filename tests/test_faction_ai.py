@@ -1,7 +1,6 @@
-import random
-
 from game.factions import Caravan, Faction, FactionDiplomacy
 from game.factions.ai import FactionAIController
+from game.world.rng import WorldRandomness
 from game.world.sites import Site
 
 
@@ -15,8 +14,11 @@ def test_faction_ai_plans_routes_with_networkx() -> None:
     traders.register_caravan(caravan)
 
     diplomacy = FactionDiplomacy()
+    randomness = WorldRandomness(seed=0)
     ai = FactionAIController(
-        [traders, Faction(name="Nomads")], diplomacy=diplomacy, rng=random.Random(0)
+        [traders, Faction(name="Nomads")],
+        diplomacy=diplomacy,
+        rng=randomness.generator("test-factions"),
     )
 
     sites = {
@@ -62,7 +64,10 @@ def test_faction_ai_fsm_cycle_records_path() -> None:
     traders.register_caravan(caravan)
 
     diplomacy = FactionDiplomacy()
-    ai = FactionAIController([traders], diplomacy=diplomacy, rng=random.Random(0))
+    randomness = WorldRandomness(seed=0)
+    ai = FactionAIController(
+        [traders], diplomacy=diplomacy, rng=randomness.generator("test-factions")
+    )
 
     world_state = {"sites": {"alpha": _make_site("alpha", "Traders")}}
 
