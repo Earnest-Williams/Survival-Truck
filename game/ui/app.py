@@ -49,63 +49,43 @@ class SurvivalTruckApp(App):
     """Interactive Textual application for Survival Truck."""
 
     CSS = """
-    :root {
-        background: #0f0f0f;
-        surface: #141414;
-        surface-lighten-1: #1c1c1c;
-        text: #c0c0c0;
-        text-muted: #7a7a7a;
-        accent: #4db6ac;
-    }
-
+    /* Minimal dark theme — only supported properties are used */
     * {
         border: none;
-        background: $surface;
-        color: $text;
+        background: #141414;
+        color: #c0c0c0;
     }
-
-    Screen {
-        layout: grid;
-        grid-rows: auto 1fr auto;
-        background: $background;
-    }
-
     Header, Footer {
-        background: $surface-lighten-1;
-        color: $text-muted;
+        background: #1c1c1c;
+        color: #7a7a7a;
         text-style: bold;
     }
+
+    Screen { layout: grid; grid-rows: auto 1fr auto; }
 
     #body {
         layout: grid;
         grid-size: 2 5;
         grid-columns: 3fr 2fr;
         grid-rows: auto auto auto auto 1fr;
-        grid-gutter: 1 2;
+        grid-gutter: 1;
         padding: 1;
+        height: 1fr;
     }
 
-    HexMapView,
-    #status,
-    #diplomacy,
-    #truck,
-    #controls,
-    TurnLogWidget {
-        padding: 1;
-        background: $surface;
-    }
-
+    /* Placement is by compose() order; spans only */
     HexMapView {
         row-span: 4;
     }
 
+    #status { }
+    #diplomacy { }
+    #truck { }
+    #controls { }
+
     TurnLogWidget {
         column-span: 2;
-        border-top: tall $accent;
-    }
-
-    #status {
-        border-top: tall $accent;
+        border-top: tall #4db6ac;
     }
     """
 
