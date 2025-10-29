@@ -65,7 +65,7 @@ class SurvivalTruckApp(App):
 
     HexMapView {
         grid-column: 1;
-        grid-row: 1 / span 4;
+        grid-row: 1 / 5;
         height: 1fr;
     }
 
@@ -90,7 +90,7 @@ class SurvivalTruckApp(App):
     }
 
     TurnLogWidget {
-        grid-column: 1 / span 2;
+        grid-column: 1 / 3;
         grid-row: 5;
         height: 1fr;
     }
