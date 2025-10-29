@@ -390,14 +390,10 @@ class Crew:
             self._register_member(member)
 
     @property
-    def members(self) -> Mapping[str, CrewMember]:
-        if self._member_frame.is_empty():
-            return {}
-        result: Dict[str, CrewMember] = {}
-        for row in self._member_frame.to_dicts():
-            name = str(row["name"])
-            result[name] = self._build_member_from_frames(name, row)
-        return result
+    def members(self) -> pl.DataFrame:
+        """Return a snapshot of the crew member frame."""
+
+        return self._member_frame.clone()
 
     def add_member(self, member: CrewMember) -> None:
         self._register_member(member)
@@ -420,7 +416,9 @@ class Crew:
         morale_changes: Dict[str, float] = {}
         if base_morale_boost:
             morale_changes.update(self._adjust_morale(base_morale_boost, exclude={member.name}))
-        bonus = self._personality_morale_delta(member, event="recruit")
+        bonus = self._personality_morale_delta(
+            member.traits, member.perks, event="recruit"
+        )
         if bonus:
             self._merge_morale_changes(
                 morale_changes,
@@ -435,7 +433,7 @@ class Crew:
             reason=reason,
         )
 
-    def remove_member(self, name: str) -> CrewMember | None:
+    def remove_member(self, name: str) -> CrewMemberPayload | None:
         return self._deregister_member(name)
 
     def lose_member(
@@ -453,15 +451,17 @@ class Crew:
         morale_changes: Dict[str, float] = {}
         if base_morale_penalty:
             morale_changes.update(self._adjust_morale(base_morale_penalty))
-        penalty = self._personality_morale_delta(member, event="loss")
+        penalty = self._personality_morale_delta(
+            member.get("traits", ()), member.get("perks", ()), event="loss"
+        )
         if penalty:
             self._merge_morale_changes(morale_changes, self._adjust_morale(penalty))
         return CrewLifecycleEvent(
             event="loss",
-            member=member.name,
+            member=str(member.get("name", name)),
             morale_changes=dict(morale_changes),
-            traits=sorted(member.traits),
-            perks=sorted(member.perks),
+            traits=sorted(member.get("traits", ())),
+            perks=sorted(member.get("perks", ())),
             reason=reason,
         )
 
@@ -537,12 +537,72 @@ class Crew:
     ) -> SkillCheckResult:
         """Run a cooperative skill check for a subset of the crew."""
 
-        actors = [self._build_member_from_frames(name) for name in members if self._has_member(name)]
-        if not actors:
+        valid_names = [name for name in members if self._has_member(name)]
+        if not valid_names:
             raise ValueError("No matching crew members provided for skill check")
-        if len(actors) == 1:
-            return perform_skill_check(actors[0], skill, difficulty, rng=self.rng)
-        return team_skill_check(actors, skill, difficulty, rng=self.rng)
+
+        member_slice = (
+            self._member_frame
+            .filter(pl.col("name").is_in(valid_names))
+            .select(
+                "name",
+                pl.col("morale"),
+                ((pl.col("morale") - 50.0) / 10.0).alias("_morale_modifier"),
+            )
+        )
+
+        skill_slice = (
+            self._skill_frame
+            .filter(
+                (pl.col("name").is_in(valid_names))
+                & (pl.col("skill") == skill.value)
+            )
+            .select(
+                "name",
+                pl.col("value").cast(pl.Float64).alias("_skill_value"),
+            )
+        )
+
+        contributions = (
+            member_slice.join(skill_slice, on="name", how="left")
+            .with_columns(pl.col("_skill_value").fill_null(0.0))
+            .with_columns(
+                (pl.col("_skill_value") + pl.col("_morale_modifier")).alias("_contribution")
+            )
+        )
+
+        if len(valid_names) == 1:
+            name = valid_names[0]
+            row = contributions.filter(pl.col("name") == name).to_dicts()[0]
+            base = float(row["_contribution"])
+            roll = base + int(self.rng.integers(1, 20, endpoint=True))
+            margin = roll - difficulty
+            return SkillCheckResult(
+                skill=skill,
+                difficulty=difficulty,
+                roll=roll,
+                success=margin >= 0,
+                margin=margin,
+                participants=[name],
+            )
+
+        contribution_map = {
+            str(row["name"]): float(row["_contribution"])
+            for row in contributions.select("name", "_contribution").to_dicts()
+        }
+        ordered_contributions = [contribution_map.get(name, 0.0) for name in valid_names]
+        primary = sorted(ordered_contributions, reverse=True)
+        base = sum(primary[:2]) + sum(value * 0.25 for value in primary[2:])
+        roll = base + int(self.rng.integers(1, 20, endpoint=True))
+        margin = roll - difficulty
+        return SkillCheckResult(
+            skill=skill,
+            difficulty=difficulty,
+            roll=roll,
+            success=margin >= 0,
+            margin=margin,
+            participants=valid_names,
+        )
 
     # ------------------------------------------------------------------
     def _register_member(self, member: CrewMember) -> None:
@@ -645,10 +705,10 @@ class Crew:
             self._member_frame.filter(pl.col("name") == name).height
         )
 
-    def _deregister_member(self, name: str) -> CrewMember | None:
+    def _deregister_member(self, name: str) -> CrewMemberPayload | None:
         if not self._has_member(name):
             return None
-        member = self._build_member_from_frames(name)
+        member = self._snapshot_member(name)
         self._member_frame = self._member_frame.filter(pl.col("name") != name)
         self._skill_frame = self._skill_frame.filter(pl.col("name") != name)
         self._trait_frame = self._trait_frame.filter(pl.col("name") != name)
@@ -725,6 +785,14 @@ class Crew:
             return None
         return float(match.get_column(value_col).item())
 
+    def get_member_morale(self, member: str) -> float | None:
+        if self._member_frame.is_empty():
+            return None
+        match = self._member_frame.filter(pl.col("name") == member)
+        if match.is_empty():
+            return None
+        return float(match.get_column("morale").item())
+
     @staticmethod
     def _merge_morale_changes(
         base: Dict[str, float],
@@ -733,9 +801,15 @@ class Crew:
         for name, delta in extra.items():
             base[name] = base.get(name, 0.0) + delta
 
-    def _personality_morale_delta(self, member: CrewMember, *, event: str) -> float:
-        traits_delta = self._aggregate_impacts(member.traits, self.trait_impacts, event)
-        perks_delta = self._aggregate_impacts(member.perks, self.perk_impacts, event)
+    def _personality_morale_delta(
+        self,
+        traits: Iterable[str],
+        perks: Iterable[str],
+        *,
+        event: str,
+    ) -> float:
+        traits_delta = self._aggregate_impacts(traits, self.trait_impacts, event)
+        perks_delta = self._aggregate_impacts(perks, self.perk_impacts, event)
         return traits_delta + perks_delta
 
     # ------------------------------------------------------------------
@@ -753,51 +827,40 @@ class Crew:
     def _clamp_relationship(value: float) -> float:
         return max(-100.0, min(100.0, float(value)))
 
-    def _build_member_from_frames(
-        self, name: str, row: Mapping[str, float | str] | None = None
-    ) -> CrewMember:
-        if row is None:
-            matches = self._member_frame.filter(pl.col("name") == name)
-            if matches.is_empty():
-                raise KeyError(name)
-            row = matches.to_dicts()[0]
-        needs: Dict[NeedName, Need] = {}
+    def _snapshot_member(self, name: str) -> CrewMemberPayload:
+        base = self._member_frame.filter(pl.col("name") == name)
+        if base.is_empty():
+            raise KeyError(name)
+        row = base.to_dicts()[0]
+        needs: Dict[str, float] = {}
+        decay: Dict[str, float] = {}
         for need_name in NeedName:
             prefix = need_name.value
-            needs[need_name] = Need(
-                name=need_name,
-                value=float(row[f"{prefix}_value"]),
-                decay_per_day=float(row[f"{prefix}_decay"]),
-                min_value=float(row[f"{prefix}_min"]),
-                max_value=float(row[f"{prefix}_max"]),
-            )
+            needs[prefix] = float(row[f"{prefix}_value"])
+            decay[prefix] = float(row[f"{prefix}_decay"])
         skill_rows = self._skill_frame.filter(pl.col("name") == name).to_dicts()
-        skills: Dict[SkillType, int] = {}
-        for skill_row in skill_rows:
-            try:
-                skill = SkillType(str(skill_row["skill"]))
-            except ValueError:
-                continue
-            skills[skill] = int(skill_row["value"])
+        skills = {str(item["skill"]): int(item["value"]) for item in skill_rows}
         trait_rows = self._trait_frame.filter(pl.col("name") == name).to_dicts()
-        traits = {str(item["trait"]) for item in trait_rows}
+        traits = [str(item["trait"]) for item in trait_rows]
         perk_rows = self._perk_frame.filter(pl.col("name") == name).to_dicts()
-        perks = {str(item["perk"]) for item in perk_rows}
+        perks = [str(item["perk"]) for item in perk_rows]
         relationship_rows = self._relationship_frame.filter(
             pl.col("source") == name
         ).to_dicts()
         relationships = {
             str(item["target"]): float(item["score"]) for item in relationship_rows
         }
-        return CrewMember(
-            name=name,
-            morale=float(row["morale"]),
-            needs=needs,
-            skills=skills,
-            relationships=relationships,
-            traits=traits,
-            perks=perks,
-        )
+        payload: CrewMemberPayload = {
+            "name": str(row["name"]),
+            "morale": float(row["morale"]),
+            "needs": needs,
+            "decay": decay,
+            "skills": skills,
+            "relationships": relationships,
+            "traits": traits,
+            "perks": perks,
+        }
+        return payload
 
     def _advance_member_frame(
         self,

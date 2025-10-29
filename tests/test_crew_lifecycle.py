@@ -51,7 +51,7 @@ def test_recruitment_and_loss_apply_trait_impacts() -> None:
     assert recruitment_event.perks == ["medic"]
     assert "Taylor" in recruitment_event.morale_changes
     assert pytest.approx(recruitment_event.morale_changes["Taylor"], rel=1e-6) == 4.5
-    assert pytest.approx(crew.members["Taylor"].morale, rel=1e-6) == 54.5
+    assert pytest.approx(crew.get_member_morale("Taylor"), rel=1e-6) == 54.5
     # Newly recruited member should not be affected by their own aura adjustments.
     assert "Jordan" not in recruitment_event.morale_changes
 
@@ -62,7 +62,7 @@ def test_recruitment_and_loss_apply_trait_impacts() -> None:
     assert loss_event.member == "Jordan"
     assert loss_event.traits == ["optimist"]
     assert loss_event.perks == ["medic"]
-    assert "Jordan" not in crew.members
+    assert not crew.has_member("Jordan")
     assert "Taylor" in loss_event.morale_changes
     assert pytest.approx(loss_event.morale_changes["Taylor"], rel=1e-6) == -6.5
-    assert pytest.approx(crew.members["Taylor"].morale, rel=1e-6) == 48.0
+    assert pytest.approx(crew.get_member_morale("Taylor"), rel=1e-6) == 48.0
