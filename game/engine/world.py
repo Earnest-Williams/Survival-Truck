@@ -10,7 +10,6 @@ from typing import (  # noqa: D401 - aggregate re-export module
     Dict,
     List,
     MutableMapping,
-    Optional,
     Protocol,
     Tuple,
     Type,
@@ -143,7 +142,7 @@ class GameWorld:
             self._world.add_component(entity, component)
         return entity
 
-    def get_singleton(self, component_type: Type[T]) -> Optional[T]:
+    def get_singleton(self, component_type: Type[T]) -> T | None:
         """Retrieve the singleton component for ``component_type`` if registered."""
 
         entity = self._singletons.get(component_type)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Iterable, Iterator, Mapping, MutableMapping, Optional
+from typing import Dict, Iterable, Iterator, Mapping, MutableMapping
 
 
 class InventoryCapacityError(ValueError):
@@ -90,9 +90,9 @@ class InventoryItem:
     weight_per_unit: float
     volume_per_unit: float
     base_value: float = 1.0
-    spoilage: Optional[SpoilageState] = None
+    spoilage: SpoilageState | None = None
 
-    def clone(self, *, quantity: Optional[float] = None) -> "InventoryItem":
+    def clone(self, *, quantity: float | None = None) -> "InventoryItem":
         """Return a copy optionally overriding the quantity."""
 
         return InventoryItem(
@@ -121,8 +121,8 @@ class Inventory:
     def __init__(
         self,
         *,
-        max_weight: Optional[float] = None,
-        max_volume: Optional[float] = None,
+        max_weight: float | None = None,
+        max_volume: float | None = None,
     ) -> None:
         self.max_weight = float("inf") if max_weight is None else float(max_weight)
         self.max_volume = float("inf") if max_volume is None else float(max_volume)
@@ -157,7 +157,12 @@ class Inventory:
             raise InventoryItemNotFoundError(item_id) from exc
 
     # -- Capacity management -------------------------------------------
-    def set_capacity(self, *, max_weight: Optional[float] = None, max_volume: Optional[float] = None) -> None:
+    def set_capacity(
+        self,
+        *,
+        max_weight: float | None = None,
+        max_volume: float | None = None,
+    ) -> None:
         if max_weight is not None:
             if max_weight < 0:
                 raise ValueError("max_weight cannot be negative")

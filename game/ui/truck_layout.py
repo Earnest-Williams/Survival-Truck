@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from rich.console import RenderableType
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -50,7 +48,7 @@ def _render_truck_panel(truck: Truck, *, title: str) -> RenderableType:
 class TruckLayoutView(Widget):
     """Produce an at-a-glance representation of the truck and modules."""
 
-    truck: Optional[Truck] = reactive(None, layout=True)
+    truck: Truck | None = reactive(None, layout=True)
 
     def __init__(self, *, title: str = "Truck Layout", truck: Truck | None = None) -> None:
         super().__init__(id="truck")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Iterator, List, Mapping, MutableMapping, Optional, Sequence
+from typing import Dict, Iterable, Iterator, List, Mapping, MutableMapping, Sequence
 
 from .trade import TradeInterface, TradeOffer
 
@@ -19,7 +19,7 @@ class Caravan:
     route: List[str] = field(default_factory=list)
     days_until_move: int = 0
 
-    def advance_day(self) -> Optional[str]:
+    def advance_day(self) -> str | None:
         """Advance the caravan along its planned route."""
 
         if self.days_until_move > 0:

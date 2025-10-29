@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Dict, Iterable, List, Mapping, Sequence
 
 import networkx as nx
 from transitions import Machine
@@ -339,7 +339,7 @@ class FactionAIController:
 
     def _select_caravan_from_faction(
         self, caravans: Sequence[Caravan], faction_name: str
-    ) -> Optional[Caravan]:
+    ) -> Caravan | None:
         candidates = [caravan for caravan in caravans if caravan.faction_name == faction_name]
         if not candidates:
             return None

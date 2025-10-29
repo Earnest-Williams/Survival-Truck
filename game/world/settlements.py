@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional
+from typing import Dict, Iterable, List, Mapping, MutableMapping
 
 from numpy.random import Generator
 
@@ -118,7 +118,7 @@ class SettlementManager:
         site: Site,
         *,
         base_name: str | None = None,
-        initial_population: Optional[int] = None,
+        initial_population: int | None = None,
     ) -> Settlement:
         """Create a new settlement for ``site`` if one does not already exist."""
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Literal, Mapping, Optional
+from typing import Any, Callable, Dict, Iterable, List, Literal, Mapping
 
 from ..events.event_queue import EventQueue, QueuedEvent
 from ..time.season_tracker import SeasonProfile, SeasonTracker
@@ -125,11 +125,11 @@ class TurnEngine:
         season_tracker: SeasonTracker,
         event_queue: EventQueue,
         *,
-        resource_pipeline: Optional[ResourcePipeline] = None,
-        weather_system: Optional[WeatherSystem] = None,
-        log_channel: Optional[TurnLogChannel] = None,
-        notification_channel: Optional[NotificationChannel] = None,
-        world: Optional[GameWorld] = None,
+        resource_pipeline: ResourcePipeline | None = None,
+        weather_system: WeatherSystem | None = None,
+        log_channel: TurnLogChannel | None = None,
+        notification_channel: NotificationChannel | None = None,
+        world: GameWorld | None = None,
     ) -> None:
         self.season_tracker = season_tracker
         self.event_queue = event_queue
