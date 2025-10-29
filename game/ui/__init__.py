@@ -5,7 +5,12 @@ from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
 from .hex_map import HexMapView, MapSelection
 from .truck_layout import TruckLayoutView
-from .app import SurvivalTruckApp, AppConfig
+
+try:  # pragma: no cover - protects against circular import during tests
+    from .app import SurvivalTruckApp, AppConfig
+except ImportError:  # pragma: no cover - gracefully degrade when UI app is optional
+    SurvivalTruckApp = None  # type: ignore[assignment]
+    AppConfig = None  # type: ignore[assignment]
 
 __all__ = [
     "AppConfig",

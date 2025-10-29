@@ -292,7 +292,8 @@ def generate_site_network(
 
     sites: Dict[str, Site] = {}
     for identifier in positions:
-        site_type: SiteType = rng.choice(type_choices, p=probabilities)
+        choice_index = int(rng.choice(len(type_choices), p=probabilities))
+        site_type: SiteType = type_choices[choice_index]
         peak, mu, sigma = _SITE_ATTENTION_PROFILES[site_type]
         curve = AttentionCurve(
             peak=max(0.1, peak + float(rng.uniform(-0.2, 0.2))),

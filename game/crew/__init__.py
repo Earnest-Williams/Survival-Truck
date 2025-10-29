@@ -5,7 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 import random
-from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence
+from typing import (
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    MutableMapping,
+    MutableSet,
+    Optional,
+    Sequence,
+    Set,
+)
 
 
 class NeedName(str, Enum):
@@ -72,12 +82,16 @@ class CrewMember:
     needs: MutableMapping[NeedName, Need] = field(default_factory=dict)
     skills: MutableMapping[SkillType, int] = field(default_factory=dict)
     relationships: MutableMapping[str, float] = field(default_factory=dict)
+    traits: MutableSet[str] = field(default_factory=set)
+    perks: MutableSet[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         for need_name in NeedName:
             self.needs.setdefault(need_name, Need(name=need_name))
         self._clamp_morale()
         self._normalize_relationships()
+        self.traits = {str(trait) for trait in self.traits}
+        self.perks = {str(perk) for perk in self.perks}
 
     def _clamp_morale(self) -> None:
         self.morale = max(0.0, min(100.0, float(self.morale)))
@@ -154,6 +168,8 @@ class CrewMember:
             "decay": {need.name.value: need.decay_per_day for need in self.needs.values()},
             "skills": {skill.value: int(value) for skill, value in self.skills.items()},
             "relationships": dict(self.relationships),
+            "traits": sorted(self.traits),
+            "perks": sorted(self.perks),
         }
 
     @staticmethod
@@ -189,13 +205,43 @@ class CrewMember:
         if isinstance(relationships_payload, Mapping):
             for key, value in relationships_payload.items():
                 relationships[str(key)] = float(value)
+        traits_payload = payload.get("traits", set())
+        traits: Set[str] = set()
+        if isinstance(traits_payload, Iterable) and not isinstance(traits_payload, (str, bytes)):
+            traits = {str(item) for item in traits_payload}
+        perks_payload = payload.get("perks", set())
+        perks: Set[str] = set()
+        if isinstance(perks_payload, Iterable) and not isinstance(perks_payload, (str, bytes)):
+            perks = {str(item) for item in perks_payload}
         return CrewMember(
             name=name,
             morale=morale,
             needs=needs,
             skills=skills,
             relationships=relationships,
+            traits=traits,
+            perks=perks,
         )
+
+
+@dataclass(frozen=True)
+class TraitImpact:
+    """Defines how a trait or perk influences crew morale events."""
+
+    recruit_morale: float = 0.0
+    loss_morale: float = 0.0
+
+
+@dataclass(frozen=True)
+class CrewLifecycleEvent:
+    """Details of a crew lifecycle transition such as recruitment or loss."""
+
+    event: str
+    member: str
+    morale_changes: Mapping[str, float]
+    traits: Sequence[str]
+    perks: Sequence[str]
+    reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -270,31 +316,82 @@ class Crew:
         members: Iterable[CrewMember] | None = None,
         *,
         rng: random.Random | None = None,
+        trait_impacts: Mapping[str, TraitImpact] | None = None,
+        perk_impacts: Mapping[str, TraitImpact] | None = None,
     ) -> None:
-        self._members: Dict[str, CrewMember] = {member.name: member for member in (members or [])}
+        self._members: Dict[str, CrewMember] = {}
         self.rng = rng or random.Random()
+        self.trait_impacts: Dict[str, TraitImpact] = dict(trait_impacts or {})
+        self.perk_impacts: Dict[str, TraitImpact] = dict(perk_impacts or {})
+        for member in members or []:
+            self._register_member(member)
 
     @property
     def members(self) -> Mapping[str, CrewMember]:
         return self._members
 
     def add_member(self, member: CrewMember) -> None:
-        self._members[member.name] = member
-        for other in self._members.values():
-            if other is member:
-                continue
-            other.relationships.setdefault(member.name, 0.0)
-            member.relationships.setdefault(other.name, 0.0)
-            other._normalize_relationships()
-        member._normalize_relationships()
+        self._register_member(member)
+
+    def recruit_member(
+        self,
+        member: CrewMember,
+        *,
+        base_morale_boost: float = 1.0,
+        reason: Optional[str] = None,
+    ) -> CrewLifecycleEvent:
+        """Add ``member`` and adjust morale based on traits and perks."""
+
+        if member.name in self._members:
+            raise ValueError(f"Crew already contains member named {member.name!r}")
+        self._register_member(member)
+        morale_changes: Dict[str, float] = {}
+        if base_morale_boost:
+            morale_changes.update(self._adjust_morale(base_morale_boost, exclude={member.name}))
+        bonus = self._personality_morale_delta(member, event="recruit")
+        if bonus:
+            self._merge_morale_changes(
+                morale_changes,
+                self._adjust_morale(bonus, exclude={member.name}),
+            )
+        return CrewLifecycleEvent(
+            event="recruitment",
+            member=member.name,
+            morale_changes=dict(morale_changes),
+            traits=sorted(member.traits),
+            perks=sorted(member.perks),
+            reason=reason,
+        )
 
     def remove_member(self, name: str) -> Optional[CrewMember]:
-        member = self._members.pop(name, None)
+        return self._deregister_member(name)
+
+    def lose_member(
+        self,
+        name: str,
+        *,
+        base_morale_penalty: float = -2.0,
+        reason: Optional[str] = None,
+    ) -> Optional[CrewLifecycleEvent]:
+        """Remove the crew member named ``name`` and apply morale changes."""
+
+        member = self._deregister_member(name)
         if member is None:
             return None
-        for other in self._members.values():
-            other.relationships.pop(name, None)
-        return member
+        morale_changes: Dict[str, float] = {}
+        if base_morale_penalty:
+            morale_changes.update(self._adjust_morale(base_morale_penalty))
+        penalty = self._personality_morale_delta(member, event="loss")
+        if penalty:
+            self._merge_morale_changes(morale_changes, self._adjust_morale(penalty))
+        return CrewLifecycleEvent(
+            event="loss",
+            member=member.name,
+            morale_changes=dict(morale_changes),
+            traits=sorted(member.traits),
+            perks=sorted(member.perks),
+            reason=reason,
+        )
 
     def advance_day(self, *, decay_modifier: float = 1.0) -> None:
         """Advance all crew members by one day, applying morale drift."""
@@ -345,12 +442,79 @@ class Crew:
             return perform_skill_check(actors[0], skill, difficulty, rng=self.rng)
         return team_skill_check(actors, skill, difficulty, rng=self.rng)
 
+    # ------------------------------------------------------------------
+    def _register_member(self, member: CrewMember) -> None:
+        self._members[member.name] = member
+        for other in self._members.values():
+            if other is member:
+                continue
+            other.relationships.setdefault(member.name, 0.0)
+            member.relationships.setdefault(other.name, 0.0)
+            other._normalize_relationships()
+        member._normalize_relationships()
+
+    def _deregister_member(self, name: str) -> Optional[CrewMember]:
+        member = self._members.pop(name, None)
+        if member is None:
+            return None
+        for other in self._members.values():
+            other.relationships.pop(name, None)
+        return member
+
+    def _adjust_morale(
+        self,
+        delta: float,
+        *,
+        exclude: Optional[Set[str]] = None,
+    ) -> Dict[str, float]:
+        changes: Dict[str, float] = {}
+        for name, member in self._members.items():
+            if exclude and name in exclude:
+                continue
+            before = member.morale
+            member.morale += delta
+            member._clamp_morale()
+            changes[name] = member.morale - before
+        return changes
+
+    @staticmethod
+    def _merge_morale_changes(
+        base: Dict[str, float],
+        extra: Mapping[str, float],
+    ) -> None:
+        for name, delta in extra.items():
+            base[name] = base.get(name, 0.0) + delta
+
+    def _personality_morale_delta(self, member: CrewMember, *, event: str) -> float:
+        traits_delta = self._aggregate_impacts(member.traits, self.trait_impacts, event)
+        perks_delta = self._aggregate_impacts(member.perks, self.perk_impacts, event)
+        return traits_delta + perks_delta
+
+    @staticmethod
+    def _aggregate_impacts(
+        names: Iterable[str],
+        impacts: Mapping[str, TraitImpact],
+        event: str,
+    ) -> float:
+        total = 0.0
+        for name in names:
+            impact = impacts.get(name)
+            if impact is None:
+                continue
+            if event == "recruit":
+                total += impact.recruit_morale
+            elif event == "loss":
+                total += impact.loss_morale
+        return total
+
 
 __all__ = [
     "Crew",
+    "CrewLifecycleEvent",
     "CrewMember",
     "Need",
     "NeedName",
+    "TraitImpact",
     "SkillCheckResult",
     "SkillType",
     "perform_skill_check",
