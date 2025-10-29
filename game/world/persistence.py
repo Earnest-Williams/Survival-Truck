@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Mapping, Sequence, Tuple, Type, TypeVar
@@ -20,21 +21,26 @@ from .sites import Site
 __all__ = [
     "WorldConfigRecord",
     "WorldDailyDiffRecord",
+    "WorldSeasonSnapshotRecord",
+    "SeasonSnapshotEntry",
     "create_world_engine",
     "init_world_storage",
     "load_daily_diff",
+    "load_season_snapshot",
     "load_world_config",
     "serialize_chunk",
     "serialize_chunks",
     "serialize_site",
     "serialize_sites",
     "store_daily_diff",
+    "store_season_snapshot",
     "store_world_config",
     "deserialize_chunk",
     "deserialize_chunks",
     "deserialize_site",
     "deserialize_sites",
     "iter_daily_diffs",
+    "iter_season_snapshots",
 ]
 
 _M = TypeVar("_M", bound=BaseModel)
@@ -79,6 +85,31 @@ class WorldDailyDiffRecord(SQLModel, table=True):
     snapshot_blob: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
     created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class WorldSeasonSnapshotRecord(SQLModel, table=True):
+    """SQLModel table storing seasonal full snapshot blobs."""
+
+    __tablename__ = "world_season_snapshots"
+    __table_args__ = (UniqueConstraint("slot", "day", name="uq_world_season_slot_day"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    slot: str = Field(sa_column=Column(String(128), index=True, nullable=False))
+    day: int = Field(sa_column=Column(Integer, nullable=False))
+    season: str | None = Field(sa_column=Column(String(64), nullable=True))
+    metadata_blob: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    snapshot_blob: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    created_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+@dataclass(frozen=True)
+class SeasonSnapshotEntry:
+    """Loaded seasonal snapshot tuple."""
+
+    season: str | None
+    metadata: WorldSnapshotMetadata
+    snapshot: WorldSnapshot
 
 
 def create_world_engine(path: str | Path, *, echo: bool = False) -> Engine:
@@ -161,6 +192,48 @@ def store_daily_diff(
     return meta
 
 
+def store_season_snapshot(
+    engine: Engine,
+    slot: str,
+    snapshot: WorldSnapshot,
+    *,
+    season: str | None = None,
+    metadata: WorldSnapshotMetadata | None = None,
+) -> WorldSnapshotMetadata:
+    """Persist ``snapshot`` as the seasonal baseline for ``slot`` at ``snapshot.day``."""
+
+    summary: str | None = None
+    if metadata is None and season:
+        summary = f"{season.title()} season snapshot (day {snapshot.day})"
+    meta = metadata or snapshot.metadata(summary=summary)
+    snapshot_blob = _pack_model(snapshot)
+    metadata_blob = _pack_model(meta)
+    now = _now()
+    with Session(engine) as session:
+        statement = select(WorldSeasonSnapshotRecord).where(
+            (WorldSeasonSnapshotRecord.slot == slot) & (WorldSeasonSnapshotRecord.day == snapshot.day)
+        )
+        record = session.exec(statement).first()
+        if record is None:
+            record = WorldSeasonSnapshotRecord(
+                slot=slot,
+                day=snapshot.day,
+                season=season,
+                metadata_blob=metadata_blob,
+                snapshot_blob=snapshot_blob,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(record)
+        else:
+            record.season = season
+            record.metadata_blob = metadata_blob
+            record.snapshot_blob = snapshot_blob
+            record.updated_at = now
+        session.commit()
+    return meta
+
+
 def load_daily_diff(engine: Engine, slot: str, day: int) -> Tuple[WorldSnapshotMetadata, WorldSnapshot] | None:
     """Load the snapshot and metadata for ``slot`` on ``day`` if present."""
 
@@ -176,6 +249,23 @@ def load_daily_diff(engine: Engine, slot: str, day: int) -> Tuple[WorldSnapshotM
         return metadata, snapshot
 
 
+def load_season_snapshot(
+    engine: Engine, slot: str, day: int
+) -> SeasonSnapshotEntry | None:
+    """Load the seasonal snapshot for ``slot`` on ``day`` if present."""
+
+    statement = select(WorldSeasonSnapshotRecord).where(
+        (WorldSeasonSnapshotRecord.slot == slot) & (WorldSeasonSnapshotRecord.day == day)
+    )
+    with Session(engine) as session:
+        record = session.exec(statement).first()
+        if record is None:
+            return None
+        metadata = _unpack_model(record.metadata_blob, WorldSnapshotMetadata)
+        snapshot = _unpack_model(record.snapshot_blob, WorldSnapshot)
+        return SeasonSnapshotEntry(record.season, metadata, snapshot)
+
+
 def iter_daily_diffs(engine: Engine, slot: str) -> Iterator[Tuple[WorldSnapshotMetadata, WorldSnapshot]]:
     """Iterate over stored diffs ordered by day for ``slot``."""
 
@@ -189,6 +279,21 @@ def iter_daily_diffs(engine: Engine, slot: str) -> Iterator[Tuple[WorldSnapshotM
             metadata = _unpack_model(record.metadata_blob, WorldSnapshotMetadata)
             snapshot = _unpack_model(record.snapshot_blob, WorldSnapshot)
             yield metadata, snapshot
+
+
+def iter_season_snapshots(engine: Engine, slot: str) -> Iterator[SeasonSnapshotEntry]:
+    """Iterate over stored seasonal snapshots ordered by day for ``slot``."""
+
+    statement = (
+        select(WorldSeasonSnapshotRecord)
+        .where(WorldSeasonSnapshotRecord.slot == slot)
+        .order_by(WorldSeasonSnapshotRecord.day)
+    )
+    with Session(engine) as session:
+        for record in session.exec(statement):
+            metadata = _unpack_model(record.metadata_blob, WorldSnapshotMetadata)
+            snapshot = _unpack_model(record.snapshot_blob, WorldSnapshot)
+            yield SeasonSnapshotEntry(record.season, metadata, snapshot)
 
 
 def serialize_chunk(chunk: MapChunk) -> Dict[str, object]:
