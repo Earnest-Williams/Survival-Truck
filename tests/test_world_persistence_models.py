@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pytest
@@ -225,6 +226,16 @@ def test_site_scavenge_uses_gaussian_profile() -> None:
     expected = max(0.5, 4.0 + result.margin) * max(0.05, site.attention_curve.value_at(site.scavenged_percent))
     progress = site.resolve_scavenge_attempt(result)
     assert pytest.approx(progress, rel=1e-6) == expected
+
+
+def test_site_risk_uses_logistic_profile() -> None:
+    site = _make_site()
+    site.scavenged_percent = site.risk_curve.midpoint
+    expected = site.risk_curve.maximum / (
+        1.0 + math.exp(-site.risk_curve.growth_rate * (site.scavenged_percent - site.risk_curve.midpoint))
+    )
+    risk = site.risk_at()
+    assert pytest.approx(risk, rel=1e-6) == max(site.risk_curve.floor, min(site.risk_curve.maximum, expected))
 
 
 def test_negotiation_adjusts_gaussian_parameters() -> None:

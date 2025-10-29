@@ -9,7 +9,7 @@ from typing import Dict, Mapping
 
 from ..crew import SkillCheckResult, SkillType
 
-__all__ = ["AttentionCurve", "Site", "SiteType"]
+__all__ = ["AttentionCurve", "RiskCurve", "Site", "SiteType"]
 
 
 class SiteType(str, Enum):
@@ -59,6 +59,74 @@ class AttentionCurve:
         return self.peak * math.exp(exponent)
 
 
+@dataclass(frozen=True)
+class RiskCurve:
+    """Logistic parameters describing how risk increases over time on a site."""
+
+    maximum: float = 1.0
+    growth_rate: float = 0.08
+    midpoint: float = 55.0
+    floor: float = 0.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "maximum", float(self.maximum))
+        object.__setattr__(self, "growth_rate", float(self.growth_rate))
+        object.__setattr__(self, "midpoint", float(self.midpoint))
+        object.__setattr__(self, "floor", float(self.floor))
+        if self.maximum <= 0:
+            raise ValueError("maximum must be positive")
+        if self.growth_rate <= 0:
+            raise ValueError("growth_rate must be positive")
+        if self.floor < 0:
+            raise ValueError("floor cannot be negative")
+        if self.floor > self.maximum:
+            raise ValueError("floor cannot exceed maximum")
+
+    def to_dict(self) -> Dict[str, float]:
+        """Serialize the curve parameters into a mapping."""
+
+        return {
+            "maximum": self.maximum,
+            "growth_rate": self.growth_rate,
+            "midpoint": self.midpoint,
+            "floor": self.floor,
+        }
+
+    @staticmethod
+    def from_dict(payload: Mapping[str, float]) -> "RiskCurve":
+        """Create a :class:`RiskCurve` instance from a mapping."""
+
+        def _get(key: str, fallback: float) -> float:
+            value = payload.get(key)
+            if value is None:
+                # Support the symbols commonly used in documentation (L, k, t0)
+                if key == "maximum":
+                    value = payload.get("L", fallback)
+                elif key == "growth_rate":
+                    value = payload.get("k", fallback)
+                elif key == "midpoint":
+                    value = payload.get("t0", fallback)
+                else:
+                    value = fallback
+            return float(value)
+
+        return RiskCurve(
+            maximum=_get("maximum", 1.0),
+            growth_rate=_get("growth_rate", 0.08),
+            midpoint=_get("midpoint", 55.0),
+            floor=float(payload.get("floor", 0.0)),
+        )
+
+    def value_at(self, t: float) -> float:
+        """Evaluate the logistic risk profile at ``t``."""
+
+        exponent = -self.growth_rate * (float(t) - self.midpoint)
+        # Clamp exponent to avoid overflow from very large magnitudes.
+        exponent = max(-700.0, min(700.0, exponent))
+        logistic = self.maximum / (1.0 + math.exp(exponent))
+        return max(self.floor, min(self.maximum, logistic))
+
+
 @dataclass
 class Site:
     """State tracked for a point of interest in the overworld."""
@@ -70,6 +138,7 @@ class Site:
     population: int = 0
     controlling_faction: str | None = None
     attention_curve: AttentionCurve = field(default_factory=AttentionCurve)
+    risk_curve: RiskCurve = field(default_factory=RiskCurve)
     settlement_id: str | None = None
     connections: Dict[str, float] = field(default_factory=dict)
 
@@ -90,6 +159,11 @@ class Site:
                 self.attention_curve = AttentionCurve.from_dict(self.attention_curve)  # type: ignore[assignment]
             else:
                 self.attention_curve = AttentionCurve()  # type: ignore[assignment]
+        if not isinstance(self.risk_curve, RiskCurve):
+            if isinstance(self.risk_curve, Mapping):
+                self.risk_curve = RiskCurve.from_dict(self.risk_curve)  # type: ignore[assignment]
+            else:
+                self.risk_curve = RiskCurve()  # type: ignore[assignment]
         if self.settlement_id is not None and not isinstance(self.settlement_id, str):
             raise TypeError("settlement_id must be a string or None")
         self.connections = self._normalise_connections(self.identifier, self.connections)
@@ -121,6 +195,7 @@ class Site:
             "population": self.population,
             "controlling_faction": self.controlling_faction,
             "attention_curve": self.attention_curve.to_dict(),
+            "risk_curve": self.risk_curve.to_dict(),
             "settlement_id": self.settlement_id,
             "connections": dict(self.connections),
         }
@@ -138,6 +213,19 @@ class Site:
             )
         else:
             attention_curve = AttentionCurve()
+        risk_payload = payload.get("risk_curve", {})
+        if isinstance(risk_payload, RiskCurve):
+            risk_curve = risk_payload
+        elif isinstance(risk_payload, Mapping):
+            risk_curve = RiskCurve.from_dict(
+                {
+                    key: float(value)
+                    for key, value in risk_payload.items()
+                    if isinstance(key, str)
+                }
+            )
+        else:
+            risk_curve = RiskCurve()
         identifier = payload.get("identifier")
         if identifier is None:
             raise ValueError("Serialized site payload missing 'identifier'")
@@ -153,6 +241,7 @@ class Site:
                 else str(payload.get("controlling_faction"))
             ),
             attention_curve=attention_curve,
+            risk_curve=risk_curve,
             settlement_id=(
                 None
                 if payload.get("settlement_id") is None
@@ -160,6 +249,12 @@ class Site:
             ),
             connections=payload.get("connections", {}),
         )
+
+    def risk_at(self, t: float | None = None) -> float:
+        """Return the logistic risk level for progress ``t`` (defaults to scavenged percent)."""
+
+        progress = self.scavenged_percent if t is None else float(t)
+        return self.risk_curve.value_at(progress)
 
     def connect(self, other: str, *, cost: float = 1.0) -> None:
         """Record a travel connection to ``other`` with ``cost``."""
