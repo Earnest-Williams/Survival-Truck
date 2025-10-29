@@ -17,6 +17,8 @@ from typing import (
     TypedDict,
 )
 
+import polars as pl
+
 
 class NeedName(str, Enum):
     """Wellbeing categories tracked for each crew member."""
@@ -25,6 +27,24 @@ class NeedName(str, Enum):
     FATIGUE = "fatigue"
     HEALTH = "health"
     COMFORT = "comfort"
+
+
+_MEMBER_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+    "name": pl.String,
+    "morale": pl.Float64,
+}
+for _need in NeedName:
+    prefix = _need.value
+    _MEMBER_FRAME_SCHEMA[f"{prefix}_value"] = pl.Float64
+    _MEMBER_FRAME_SCHEMA[f"{prefix}_decay"] = pl.Float64
+    _MEMBER_FRAME_SCHEMA[f"{prefix}_min"] = pl.Float64
+    _MEMBER_FRAME_SCHEMA[f"{prefix}_max"] = pl.Float64
+
+_RELATIONSHIP_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+    "source": pl.String,
+    "target": pl.String,
+    "score": pl.Float64,
+}
 
 
 @dataclass
@@ -409,18 +429,27 @@ class Crew:
     def advance_day(self, *, decay_modifier: float = 1.0) -> None:
         """Advance all crew members by one day, applying morale drift."""
 
-        for member in list(self._members.values()):
-            member.advance_day(self._members, decay_modifier=decay_modifier)
+        if not self._members:
+            return
+        member_frame = self._member_frame()
+        relationship_frame = self._relationship_frame()
+        updated = self._advance_member_frame(
+            member_frame,
+            relationship_frame,
+            decay_modifier,
+        )
+        self._apply_member_frame(updated)
         self._resolve_social_drift()
 
     def _resolve_social_drift(self) -> None:
-        for member in self._members.values():
-            for other_name, score in list(member.relationships.items()):
-                if other_name not in self._members:
-                    continue
-                other_score = self._members[other_name].relationships.get(member.name, 0.0)
-                equilibrium = (score + other_score) / 2
-                member.relationships[other_name] = equilibrium
+        if not self._members:
+            return
+        relationship_frame = self._relationship_frame()
+        if relationship_frame.is_empty():
+            self._apply_random_interactions()
+            return
+        equilibrated = self._equilibrate_relationships(relationship_frame)
+        self._apply_relationship_frame(equilibrated)
         self._apply_random_interactions()
 
     def _apply_random_interactions(self) -> None:
@@ -480,15 +509,33 @@ class Crew:
         *,
         exclude: Set[str] | None = None,
     ) -> Dict[str, float]:
-        changes: Dict[str, float] = {}
-        for name, member in self._members.items():
-            if exclude and name in exclude:
+        if not self._members or delta == 0:
+            return {}
+        frame = self._member_frame()
+        if exclude:
+            frame = frame.filter(~pl.col("name").is_in(list(exclude)))
+        if frame.is_empty():
+            return {}
+        adjusted = frame.with_columns(
+            (pl.col("morale") + delta)
+            .clip(lower_bound=0.0, upper_bound=100.0)
+            .alias("_morale_next")
+        )
+        result: Dict[str, float] = {}
+        for row in adjusted.select(
+            "name",
+            "morale",
+            "_morale_next",
+        ).to_dicts():
+            name = str(row["name"])
+            member = self._members.get(name)
+            if member is None:
                 continue
             before = member.morale
-            member.morale += delta
+            member.morale = float(row["_morale_next"])
             member._clamp_morale()
-            changes[name] = member.morale - before
-        return changes
+            result[name] = member.morale - before
+        return result
 
     @staticmethod
     def _merge_morale_changes(
@@ -502,6 +549,182 @@ class Crew:
         traits_delta = self._aggregate_impacts(member.traits, self.trait_impacts, event)
         perks_delta = self._aggregate_impacts(member.perks, self.perk_impacts, event)
         return traits_delta + perks_delta
+
+    # ------------------------------------------------------------------
+    def _member_frame(self) -> pl.DataFrame:
+        if not self._members:
+            return pl.DataFrame(schema=_MEMBER_FRAME_SCHEMA)
+        rows: List[Dict[str, float | str]] = []
+        for member in self._members.values():
+            row: Dict[str, float | str] = {
+                "name": member.name,
+                "morale": float(member.morale),
+            }
+            for need_name in NeedName:
+                need = member.needs.get(need_name, Need(name=need_name))
+                prefix = need_name.value
+                row[f"{prefix}_value"] = float(need.value)
+                row[f"{prefix}_decay"] = float(need.decay_per_day)
+                row[f"{prefix}_min"] = float(need.min_value)
+                row[f"{prefix}_max"] = float(need.max_value)
+            rows.append(row)
+        return pl.DataFrame(rows, schema=_MEMBER_FRAME_SCHEMA)
+
+    def _relationship_frame(self) -> pl.DataFrame:
+        if not self._members:
+            return pl.DataFrame(schema=_RELATIONSHIP_FRAME_SCHEMA)
+        rows: List[Dict[str, float | str]] = []
+        for name, member in self._members.items():
+            for other, score in member.relationships.items():
+                rows.append(
+                    {
+                        "source": name,
+                        "target": str(other),
+                        "score": float(score),
+                    }
+                )
+        if not rows:
+            return pl.DataFrame(schema=_RELATIONSHIP_FRAME_SCHEMA)
+        return pl.DataFrame(rows, schema=_RELATIONSHIP_FRAME_SCHEMA)
+
+    def _apply_member_frame(self, frame: pl.DataFrame) -> None:
+        for row in frame.to_dicts():
+            name = str(row.get("name", ""))
+            member = self._members.get(name)
+            if member is None:
+                continue
+            member.morale = float(row.get("morale", member.morale))
+            member._clamp_morale()
+            for need_name in NeedName:
+                prefix = need_name.value
+                value_key = f"{prefix}_value"
+                if value_key in row:
+                    member.needs[need_name].value = float(row[value_key])
+
+    def _apply_relationship_frame(self, frame: pl.DataFrame) -> None:
+        updates: Dict[str, Dict[str, float]] = {name: {} for name in self._members}
+        for row in frame.to_dicts():
+            source = str(row.get("source", ""))
+            target = str(row.get("target", ""))
+            score = float(row.get("score", 0.0))
+            updates.setdefault(source, {})[target] = score
+        for name, member in self._members.items():
+            new_scores = updates.get(name, {})
+            to_remove = [key for key in member.relationships if key not in new_scores]
+            for key in to_remove:
+                member.relationships.pop(key, None)
+            for other, score in new_scores.items():
+                member.relationships[other] = score
+
+    def _advance_member_frame(
+        self,
+        frame: pl.DataFrame,
+        relationships: pl.DataFrame,
+        decay_modifier: float,
+    ) -> pl.DataFrame:
+        if frame.is_empty():
+            return frame
+        lazy = frame.lazy()
+        stress_columns: List[pl.Expr] = []
+        for need_name in NeedName:
+            prefix = need_name.value
+            value_col = f"{prefix}_value"
+            min_col = f"{prefix}_min"
+            max_col = f"{prefix}_max"
+            decay_col = f"{prefix}_decay"
+            new_value_expr = pl.max_horizontal(
+                pl.col(min_col),
+                pl.col(value_col) - pl.col(decay_col) * decay_modifier,
+            )
+            satisfaction_expr = (
+                pl.when(pl.col(max_col) <= pl.col(min_col))
+                .then(1.0)
+                .otherwise(
+                    (new_value_expr - pl.col(min_col))
+                    / (pl.col(max_col) - pl.col(min_col))
+                )
+            )
+            stress_expr = (
+                pl.when(satisfaction_expr < 0.5)
+                .then(0.5 - satisfaction_expr)
+                .otherwise(0.0)
+            )
+            lazy = lazy.with_columns(
+                new_value_expr.alias(value_col),
+                satisfaction_expr.alias(f"{prefix}_satisfaction"),
+                stress_expr.alias(f"{prefix}_stress"),
+            )
+            stress_columns.append(pl.col(f"{prefix}_stress"))
+        if stress_columns:
+            total_stress = pl.fold(
+                acc=pl.lit(0.0),
+                function=lambda acc, expr: acc + expr,
+                exprs=stress_columns,
+            ).alias("_total_stress")
+        else:
+            total_stress = pl.lit(0.0).alias("_total_stress")
+        lazy = lazy.with_columns(total_stress)
+
+        names = frame.get_column("name").to_list()
+        boost_lazy = pl.DataFrame({"name": [], "relationship_boost": []}).lazy()
+        if not relationships.is_empty() and names:
+            valid = relationships.filter(
+                pl.col("source").is_in(names) & pl.col("target").is_in(names)
+            )
+            if not valid.is_empty():
+                boost_lazy = (
+                    valid.group_by("source")
+                    .agg(pl.col("score").mean().alias("mean_score"))
+                    .with_columns((pl.col("mean_score") / 200.0).alias("relationship_boost"))
+                    .select(pl.col("source").alias("name"), "relationship_boost")
+                    .lazy()
+                )
+        lazy = (
+            lazy.join(boost_lazy, on="name", how="left")
+            .with_columns(pl.col("relationship_boost").fill_null(0.0))
+            .rename({"relationship_boost": "_relationship_boost"})
+        )
+
+        lazy = lazy.with_columns(
+            (
+                pl.col("morale")
+                + pl.col("_relationship_boost") * 10.0
+                - pl.col("_total_stress") * 6.0
+            )
+            .clip(lower_bound=0.0, upper_bound=100.0)
+            .alias("morale")
+        )
+
+        drop_cols = ["_total_stress", "_relationship_boost"]
+        for need_name in NeedName:
+            prefix = need_name.value
+            drop_cols.extend([f"{prefix}_satisfaction", f"{prefix}_stress"])
+
+        return lazy.drop(drop_cols).collect()
+
+    def _equilibrate_relationships(self, frame: pl.DataFrame) -> pl.DataFrame:
+        names = list(self._members)
+        if not names:
+            return frame
+        filtered = frame.filter(
+            pl.col("source").is_in(names) & pl.col("target").is_in(names)
+        )
+        if filtered.is_empty():
+            return filtered
+        reverse = filtered.select(
+            pl.col("target").alias("source"),
+            pl.col("source").alias("target"),
+            pl.col("score").alias("reverse_score"),
+        )
+        joined = filtered.join(reverse, on=["source", "target"], how="left")
+        equilibrium = (
+            pl.when(pl.col("reverse_score").is_null())
+            .then(pl.col("score"))
+            .otherwise((pl.col("score") + pl.col("reverse_score")) / 2.0)
+        )
+        return joined.with_columns(equilibrium.alias("score")).select(
+            "source", "target", "score"
+        )
 
     @staticmethod
     def _aggregate_impacts(
