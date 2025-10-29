@@ -13,6 +13,33 @@ OS: Linux, macOS, Windows (UTF-8 terminal recommended)
 
 ---
 
+## Installation
+
+This project is managed with [Poetry](https://python-poetry.org/) for reproducible environments and lockfiles.
+
+1. Install Poetry (version 2.1+ recommended).
+2. Create the virtual environment and install dependencies:
+
+   ```bash
+   poetry install
+   ```
+
+3. Launch the Textual interface from the Poetry environment:
+
+   ```bash
+   poetry run survival-truck
+   ```
+
+4. Run the automated test suite:
+
+   ```bash
+   poetry run pytest
+   ```
+
+The generated `poetry.lock` file pins transitive dependencies to ensure consistent builds across machines.
+
+---
+
 ## 2) World and Game Structure
 
 * **Hex world:** Procedurally generated, persistent.
