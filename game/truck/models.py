@@ -99,15 +99,16 @@ class TruckStats:
 class MaintenanceReport:
     """Summary of the maintenance phase for logging or UI consumption."""
 
-    maintenance_applied: int
-    maintenance_required: int
+    maintenance_applied: float
+    maintenance_required: float
     truck_condition: float
     module_conditions: Dict[str, float]
     degraded_modules: List[str] = field(default_factory=list)
+    cost_multiplier: float = 1.0
 
     @property
-    def shortfall(self) -> int:
-        return max(0, self.maintenance_required - self.maintenance_applied)
+    def shortfall(self) -> float:
+        return max(0.0, self.maintenance_required - self.maintenance_applied)
 
 
 @dataclass
@@ -217,10 +218,17 @@ class Truck:
             maintenance_load=self.maintenance_load,
         )
 
-    def run_maintenance_cycle(self, maintenance_points: int) -> MaintenanceReport:
+    def run_maintenance_cycle(
+        self,
+        maintenance_points: float,
+        *,
+        maintenance_cost_multiplier: float = 1.0,
+    ) -> MaintenanceReport:
         """Apply maintenance effort and degrade modules accordingly."""
 
-        required = self.maintenance_load
+        maintenance_points = float(maintenance_points)
+        cost_multiplier = max(0.0, float(maintenance_cost_multiplier))
+        required = float(self.maintenance_load) * cost_multiplier
         stress = 0.0
         if required > 0:
             stress = max(0.0, (required - maintenance_points) / required)
@@ -242,6 +250,7 @@ class Truck:
             truck_condition=self.condition,
             module_conditions={mid: mod.condition for mid, mod in self.modules.items()},
             degraded_modules=degraded_modules,
+            cost_multiplier=cost_multiplier,
         )
         return report
 

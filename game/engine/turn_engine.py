@@ -149,6 +149,7 @@ class TurnEngine:
         # not explicitly register handlers. Additional handlers can still be
         # appended by the embedding game code.
         self.register_handler("command", self._default_command_handler)
+        self.register_handler("travel", self._default_travel_handler)
         self._register_default_systems()
 
     def register_handler(self, phase: PhaseName, handler: PhaseHandler) -> None:
@@ -251,6 +252,41 @@ class TurnEngine:
             if assignments:
                 context.world_state.setdefault("crew_assignments", []).extend(assignments)
                 context.log("Crew assignments: " + "; ".join(assignments))
+
+    def _default_travel_handler(self, context: TurnContext) -> None:
+        command = context.command
+        route = command.get("route") if isinstance(command, Mapping) else None
+        if not isinstance(route, Mapping):
+            return
+
+        raw_base_cost = (
+            route.get("base_cost")
+            or route.get("base_travel_cost")
+            or route.get("travel_cost")
+            or route.get("cost")
+            or route.get("distance")
+        )
+        try:
+            base_cost = float(raw_base_cost)
+        except (TypeError, ValueError):
+            return
+        if base_cost < 0:
+            return
+
+        adjusted_cost = context.travel_cost_for(base_cost)
+        record = {
+            "day": context.day,
+            "base_cost": base_cost,
+            "modifier": context.travel_modifier,
+            "adjusted_cost": adjusted_cost,
+        }
+        travel_reports = context.world_state.setdefault("travel_reports", [])
+        travel_reports.append(record)
+        context.world_state["last_travel_cost"] = record
+        context.log(
+            "Travel cost adjusted to "
+            f"{adjusted_cost:.2f} (base {base_cost:.2f}, modifier {context.travel_modifier:.2f})"
+        )
 
     def _record_turn(self, context: TurnContext) -> None:
         summary = self._build_summary(context)

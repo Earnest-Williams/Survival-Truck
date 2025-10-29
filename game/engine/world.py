@@ -209,8 +209,15 @@ class TruckMaintenanceSystem:
         truck_component = world.get_singleton(TruckComponent)
         if truck_component is None:
             return
-        maintenance_points = int(context.command.get("maintenance_points", 0) or 0)
-        report = truck_component.truck.run_maintenance_cycle(maintenance_points)
+        raw_points = context.command.get("maintenance_points", 0) or 0
+        try:
+            maintenance_points = float(raw_points)
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            maintenance_points = 0.0
+        report = truck_component.truck.run_maintenance_cycle(
+            maintenance_points,
+            maintenance_cost_multiplier=context.maintenance_modifier,
+        )
         reports = context.world_state.setdefault("maintenance_reports", [])
         reports.append(report)
 
