@@ -54,3 +54,41 @@ def test_faction_ai_plans_routes_with_networkx() -> None:
     assert caravan.location == "beta"
     assert caravan.route == ["gamma"]
     assert caravan.days_until_move == 2
+
+
+def test_faction_ai_fsm_cycle_records_path() -> None:
+    traders = Faction(name="Traders")
+    caravan = Caravan(identifier="caravan-1", faction_name="Traders", location="alpha")
+    traders.register_caravan(caravan)
+
+    diplomacy = FactionDiplomacy()
+    ai = FactionAIController([traders], diplomacy=diplomacy, rng=random.Random(0))
+
+    world_state = {"sites": {"alpha": _make_site("alpha", "Traders")}}
+
+    ai.run_turn(world_state=world_state, day=1)
+
+    assert ai.state == "patrol"
+    assert ai.state_path == ("patrol", "trade", "raid", "alliance")
+
+    # ensure the path resets each turn
+    ai.run_turn(world_state=world_state, day=2)
+    assert ai.state_path == ("patrol", "trade", "raid", "alliance")
+
+
+def test_faction_ai_fsm_manual_transitions_progress_states() -> None:
+    ai = FactionAIController([])
+
+    assert ai.state == "patrol"
+
+    ai.advance_patrol()
+    assert ai.state == "trade"
+
+    ai.process_trade()
+    assert ai.state == "raid"
+
+    ai.engage_raid()
+    assert ai.state == "alliance"
+
+    ai.refresh_alliance()
+    assert ai.state == "patrol"
