@@ -155,7 +155,6 @@ class FactionAIController:
 
     def _state_alliance(self) -> None:
         self._record_state("alliance")
-        self.diplomacy.decay()
 
     # ------------------------------------------------------------------
     def _rebuild_after_losses(self) -> None:

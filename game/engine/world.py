@@ -245,9 +245,25 @@ class FactionAISystem:
         faction_component.controller.run_turn(world_state=context.world_state, day=context.day)
 
 
+class DiplomacySystem:
+    """Apply global diplomacy updates separate from faction AI turns."""
+
+    def process(self, world: GameWorld, context: "TurnContext") -> None:  # pragma: no cover - runtime behaviour
+        faction_component = world.get_singleton(FactionControllerComponent)
+        if faction_component is None:
+            return
+        diplomacy = getattr(faction_component.controller, "diplomacy", None)
+        if diplomacy is None:
+            return
+        decay = getattr(diplomacy, "decay", None)
+        if callable(decay):
+            decay()
+
+
 __all__ = [
     "CrewAdvancementSystem",
     "CrewComponent",
+    "DiplomacySystem",
     "FactionAISystem",
     "FactionControllerComponent",
     "GameWorld",
