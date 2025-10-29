@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Mapping, Optional
+from typing import Dict, Mapping
 
 from rich.console import RenderableType
 from textual.binding import Binding
@@ -43,7 +43,7 @@ class DashboardView(Widget):
     ) -> None:
         super().__init__(id="status")
         self.title = title
-        self._focus_detail: Optional[str] = None
+        self._focus_detail: str | None = None
         self.notification_channel = notification_channel or NotificationChannel()
         self._stats: Dict[str, str] = {str(key): str(value) for key, value in (stats or {}).items()}
 

@@ -12,7 +12,6 @@ from typing import (
     Mapping,
     MutableMapping,
     MutableSet,
-    Optional,
     Sequence,
     Set,
 )
@@ -241,7 +240,7 @@ class CrewLifecycleEvent:
     morale_changes: Mapping[str, float]
     traits: Sequence[str]
     perks: Sequence[str]
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -338,7 +337,7 @@ class Crew:
         member: CrewMember,
         *,
         base_morale_boost: float = 1.0,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> CrewLifecycleEvent:
         """Add ``member`` and adjust morale based on traits and perks."""
 
@@ -363,7 +362,7 @@ class Crew:
             reason=reason,
         )
 
-    def remove_member(self, name: str) -> Optional[CrewMember]:
+    def remove_member(self, name: str) -> CrewMember | None:
         return self._deregister_member(name)
 
     def lose_member(
@@ -371,8 +370,8 @@ class Crew:
         name: str,
         *,
         base_morale_penalty: float = -2.0,
-        reason: Optional[str] = None,
-    ) -> Optional[CrewLifecycleEvent]:
+        reason: str | None = None,
+    ) -> CrewLifecycleEvent | None:
         """Remove the crew member named ``name`` and apply morale changes."""
 
         member = self._deregister_member(name)
@@ -453,7 +452,7 @@ class Crew:
             other._normalize_relationships()
         member._normalize_relationships()
 
-    def _deregister_member(self, name: str) -> Optional[CrewMember]:
+    def _deregister_member(self, name: str) -> CrewMember | None:
         member = self._members.pop(name, None)
         if member is None:
             return None
@@ -465,7 +464,7 @@ class Crew:
         self,
         delta: float,
         *,
-        exclude: Optional[Set[str]] = None,
+        exclude: Set[str] | None = None,
     ) -> Dict[str, float]:
         changes: Dict[str, float] = {}
         for name, member in self._members.items():
