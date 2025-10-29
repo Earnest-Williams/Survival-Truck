@@ -48,6 +48,22 @@ _RELATIONSHIP_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
     "score": pl.Float64,
 }
 
+_SKILL_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+    "name": pl.String,
+    "skill": pl.String,
+    "value": pl.Int64,
+}
+
+_TRAIT_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+    "name": pl.String,
+    "trait": pl.String,
+}
+
+_PERK_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+    "name": pl.String,
+    "perk": pl.String,
+}
+
 
 @dataclass
 class Need:
@@ -355,22 +371,39 @@ class Crew:
         trait_impacts: Mapping[str, TraitImpact] | None = None,
         perk_impacts: Mapping[str, TraitImpact] | None = None,
     ) -> None:
-        self._members: Dict[str, CrewMember] = {}
         if randomness is not None:
             self.rng = randomness.generator("crew")
         else:
             self.rng = rng or default_rng()
         self.trait_impacts: Dict[str, TraitImpact] = dict(trait_impacts or {})
         self.perk_impacts: Dict[str, TraitImpact] = dict(perk_impacts or {})
+        self._member_frame: pl.DataFrame = pl.DataFrame(
+            schema=_MEMBER_FRAME_SCHEMA
+        )
+        self._relationship_frame: pl.DataFrame = pl.DataFrame(
+            schema=_RELATIONSHIP_FRAME_SCHEMA
+        )
+        self._skill_frame: pl.DataFrame = pl.DataFrame(schema=_SKILL_FRAME_SCHEMA)
+        self._trait_frame: pl.DataFrame = pl.DataFrame(schema=_TRAIT_FRAME_SCHEMA)
+        self._perk_frame: pl.DataFrame = pl.DataFrame(schema=_PERK_FRAME_SCHEMA)
         for member in members or []:
             self._register_member(member)
 
     @property
     def members(self) -> Mapping[str, CrewMember]:
-        return self._members
+        if self._member_frame.is_empty():
+            return {}
+        result: Dict[str, CrewMember] = {}
+        for row in self._member_frame.to_dicts():
+            name = str(row["name"])
+            result[name] = self._build_member_from_frames(name, row)
+        return result
 
     def add_member(self, member: CrewMember) -> None:
         self._register_member(member)
+
+    def has_member(self, name: str) -> bool:
+        return self._has_member(name)
 
     def recruit_member(
         self,
@@ -381,7 +414,7 @@ class Crew:
     ) -> CrewLifecycleEvent:
         """Add ``member`` and adjust morale based on traits and perks."""
 
-        if member.name in self._members:
+        if self._has_member(member.name):
             raise ValueError(f"Crew already contains member named {member.name!r}")
         self._register_member(member)
         morale_changes: Dict[str, float] = {}
@@ -435,45 +468,66 @@ class Crew:
     def advance_day(self, *, decay_modifier: float = 1.0) -> None:
         """Advance all crew members by one day, applying morale drift."""
 
-        if not self._members:
+        if self._member_frame.is_empty():
             return
-        member_frame = self._member_frame()
-        relationship_frame = self._relationship_frame()
+        member_frame = self._member_frame
+        relationship_frame = self._relationship_frame
         updated = self._advance_member_frame(
             member_frame,
             relationship_frame,
             decay_modifier,
         )
-        self._apply_member_frame(updated)
+        self._member_frame = updated
         self._resolve_social_drift()
 
     def _resolve_social_drift(self) -> None:
-        if not self._members:
+        if self._member_frame.is_empty():
             return
-        relationship_frame = self._relationship_frame()
+        relationship_frame = self._relationship_frame
         if relationship_frame.is_empty():
             self._apply_random_interactions()
             return
         equilibrated = self._equilibrate_relationships(relationship_frame)
-        self._apply_relationship_frame(equilibrated)
+        self._relationship_frame = equilibrated
         self._apply_random_interactions()
 
     def _apply_random_interactions(self) -> None:
-        names = list(self._members)
+        if self._member_frame.is_empty():
+            return
+        names = self._member_frame.get_column("name").to_list()
         if len(names) < 2:
             return
         self.rng.shuffle(names)
+        updates: List[Dict[str, float | str]] = []
         for first, second in zip(names[::2], names[1::2]):
-            a = self._members[first]
-            b = self._members[second]
-            attitude = (a.relationships.get(second, 0.0) + b.relationships.get(first, 0.0)) / 2
+            first_score = self._relationship_score(first, second)
+            second_score = self._relationship_score(second, first)
+            attitude = (first_score + second_score) / 2
             delta = float(self.rng.uniform(-2.0, 3.0))
             if attitude > 25:
                 delta = abs(delta)
             elif attitude < -25:
                 delta = -abs(delta)
-            a.adjust_relationship(second, delta)
-            b.adjust_relationship(first, delta)
+            updates.append(
+                {
+                    "source": first,
+                    "target": second,
+                    "score": self._clamp_relationship(first_score + delta),
+                }
+            )
+            updates.append(
+                {
+                    "source": second,
+                    "target": first,
+                    "score": self._clamp_relationship(second_score + delta),
+                }
+            )
+        if updates:
+            update_df = pl.DataFrame(updates, schema=_RELATIONSHIP_FRAME_SCHEMA)
+            combined = pl.concat([self._relationship_frame, update_df], how="vertical")
+            self._relationship_frame = combined.unique(
+                subset=["source", "target"], keep="last"
+            )
 
     def skill_check(
         self,
@@ -483,7 +537,7 @@ class Crew:
     ) -> SkillCheckResult:
         """Run a cooperative skill check for a subset of the crew."""
 
-        actors = [self._members[name] for name in members if name in self._members]
+        actors = [self._build_member_from_frames(name) for name in members if self._has_member(name)]
         if not actors:
             raise ValueError("No matching crew members provided for skill check")
         if len(actors) == 1:
@@ -492,21 +546,116 @@ class Crew:
 
     # ------------------------------------------------------------------
     def _register_member(self, member: CrewMember) -> None:
-        self._members[member.name] = member
-        for other in self._members.values():
-            if other is member:
-                continue
-            other.relationships.setdefault(member.name, 0.0)
-            member.relationships.setdefault(other.name, 0.0)
-            other._normalize_relationships()
+        existing_names: List[str] = []
+        if not self._member_frame.is_empty():
+            existing_names = self._member_frame.get_column("name").to_list()
         member._normalize_relationships()
 
+        # Remove any existing state for this member so that re-registration replaces it.
+        self._member_frame = self._member_frame.filter(pl.col("name") != member.name)
+        self._skill_frame = self._skill_frame.filter(pl.col("name") != member.name)
+        self._trait_frame = self._trait_frame.filter(pl.col("name") != member.name)
+        self._perk_frame = self._perk_frame.filter(pl.col("name") != member.name)
+        self._relationship_frame = self._relationship_frame.filter(
+            (pl.col("source") != member.name) & (pl.col("target") != member.name)
+        )
+
+        row: Dict[str, float | str] = {
+            "name": member.name,
+            "morale": float(member.morale),
+        }
+        for need_name in NeedName:
+            need = member.needs.get(need_name, Need(name=need_name))
+            prefix = need_name.value
+            row[f"{prefix}_value"] = float(need.value)
+            row[f"{prefix}_decay"] = float(need.decay_per_day)
+            row[f"{prefix}_min"] = float(need.min_value)
+            row[f"{prefix}_max"] = float(need.max_value)
+        new_member_df = pl.DataFrame([row], schema=_MEMBER_FRAME_SCHEMA)
+        if self._member_frame.is_empty():
+            self._member_frame = new_member_df
+        else:
+            self._member_frame = pl.concat([self._member_frame, new_member_df], how="vertical")
+
+        if member.skills:
+            skill_rows = [
+                {
+                    "name": member.name,
+                    "skill": skill.value,
+                    "value": int(value),
+                }
+                for skill, value in member.skills.items()
+            ]
+            skill_df = pl.DataFrame(skill_rows, schema=_SKILL_FRAME_SCHEMA)
+            self._skill_frame = pl.concat([self._skill_frame, skill_df], how="vertical")
+
+        if member.traits:
+            trait_rows = [
+                {
+                    "name": member.name,
+                    "trait": trait,
+                }
+                for trait in sorted({str(trait) for trait in member.traits})
+            ]
+            trait_df = pl.DataFrame(trait_rows, schema=_TRAIT_FRAME_SCHEMA)
+            self._trait_frame = pl.concat([self._trait_frame, trait_df], how="vertical")
+
+        if member.perks:
+            perk_rows = [
+                {
+                    "name": member.name,
+                    "perk": perk,
+                }
+                for perk in sorted({str(perk) for perk in member.perks})
+            ]
+            perk_df = pl.DataFrame(perk_rows, schema=_PERK_FRAME_SCHEMA)
+            self._perk_frame = pl.concat([self._perk_frame, perk_df], how="vertical")
+
+        if existing_names:
+            relationship_rows: List[Dict[str, float | str]] = []
+            for other_name in existing_names:
+                relationship_rows.append(
+                    {
+                        "source": member.name,
+                        "target": other_name,
+                        "score": self._clamp_relationship(
+                            member.relationships.get(other_name, 0.0)
+                        ),
+                    }
+                )
+                relationship_rows.append(
+                    {
+                        "source": other_name,
+                        "target": member.name,
+                        "score": 0.0,
+                    }
+                )
+            relationship_df = pl.DataFrame(
+                relationship_rows, schema=_RELATIONSHIP_FRAME_SCHEMA
+            )
+            combined = pl.concat([self._relationship_frame, relationship_df], how="vertical")
+            self._relationship_frame = combined.unique(
+                subset=["source", "target"], keep="last"
+            )
+
+    def _has_member(self, name: str) -> bool:
+        if self._member_frame.is_empty():
+            return False
+        return bool(
+            self._member_frame.filter(pl.col("name") == name).height
+        )
+
     def _deregister_member(self, name: str) -> CrewMember | None:
-        member = self._members.pop(name, None)
-        if member is None:
+        if not self._has_member(name):
             return None
-        for other in self._members.values():
-            other.relationships.pop(name, None)
+        member = self._build_member_from_frames(name)
+        self._member_frame = self._member_frame.filter(pl.col("name") != name)
+        self._skill_frame = self._skill_frame.filter(pl.col("name") != name)
+        self._trait_frame = self._trait_frame.filter(pl.col("name") != name)
+        self._perk_frame = self._perk_frame.filter(pl.col("name") != name)
+        self._relationship_frame = self._relationship_frame.filter(
+            (pl.col("source") != name) & (pl.col("target") != name)
+        )
         return member
 
     def _adjust_morale(
@@ -515,33 +664,66 @@ class Crew:
         *,
         exclude: Set[str] | None = None,
     ) -> Dict[str, float]:
-        if not self._members or delta == 0:
+        if self._member_frame.is_empty() or delta == 0:
             return {}
-        frame = self._member_frame()
-        if exclude:
-            frame = frame.filter(~pl.col("name").is_in(list(exclude)))
-        if frame.is_empty():
-            return {}
-        adjusted = frame.with_columns(
-            (pl.col("morale") + delta)
-            .clip(lower_bound=0.0, upper_bound=100.0)
-            .alias("_morale_next")
+        names_expr = pl.col("name")
+        exclude_list = list(exclude) if exclude else []
+        adjusted = self._member_frame.with_columns(
+            pl.when(names_expr.is_in(exclude_list))
+            .then(pl.col("morale"))
+            .otherwise(
+                (pl.col("morale") + delta).clip(lower_bound=0.0, upper_bound=100.0)
+            )
+            .alias("morale")
         )
+        delta_df = adjusted.join(
+            self._member_frame.select("name", pl.col("morale").alias("_old_morale")),
+            on="name",
+            how="left",
+        ).with_columns((pl.col("morale") - pl.col("_old_morale")).alias("_delta"))
+        self._member_frame = adjusted
         result: Dict[str, float] = {}
-        for row in adjusted.select(
-            "name",
-            "morale",
-            "_morale_next",
+        for row in delta_df.filter(~names_expr.is_in(exclude_list)).select(
+            "name", "_delta"
         ).to_dicts():
-            name = str(row["name"])
-            member = self._members.get(name)
-            if member is None:
-                continue
-            before = member.morale
-            member.morale = float(row["_morale_next"])
-            member._clamp_morale()
-            result[name] = member.morale - before
+            result[str(row["name"])] = float(row["_delta"])
         return result
+
+    def adjust_need(self, member: str, need: NeedName, delta: float) -> float | None:
+        if self._member_frame.is_empty() or delta == 0:
+            return self.get_need_value(member, need)
+        if not self._has_member(member):
+            return None
+        prefix = need.value
+        value_col = f"{prefix}_value"
+        min_col = f"{prefix}_min"
+        max_col = f"{prefix}_max"
+        match = self._member_frame.filter(pl.col("name") == member)
+        if match.is_empty():
+            return None
+        current = float(match.get_column(value_col).item())
+        minimum = float(match.get_column(min_col).item())
+        maximum = float(match.get_column(max_col).item())
+        new_value = max(minimum, min(maximum, current + delta))
+        if new_value == current:
+            return new_value
+        self._member_frame = self._member_frame.with_columns(
+            pl.when(pl.col("name") == member)
+            .then(pl.lit(new_value))
+            .otherwise(pl.col(value_col))
+            .alias(value_col)
+        )
+        return new_value
+
+    def get_need_value(self, member: str, need: NeedName) -> float | None:
+        if self._member_frame.is_empty():
+            return None
+        prefix = need.value
+        value_col = f"{prefix}_value"
+        match = self._member_frame.filter(pl.col("name") == member)
+        if match.is_empty():
+            return None
+        return float(match.get_column(value_col).item())
 
     @staticmethod
     def _merge_morale_changes(
@@ -557,70 +739,65 @@ class Crew:
         return traits_delta + perks_delta
 
     # ------------------------------------------------------------------
-    def _member_frame(self) -> pl.DataFrame:
-        if not self._members:
-            return pl.DataFrame(schema=_MEMBER_FRAME_SCHEMA)
-        rows: List[Dict[str, float | str]] = []
-        for member in self._members.values():
-            row: Dict[str, float | str] = {
-                "name": member.name,
-                "morale": float(member.morale),
-            }
-            for need_name in NeedName:
-                need = member.needs.get(need_name, Need(name=need_name))
-                prefix = need_name.value
-                row[f"{prefix}_value"] = float(need.value)
-                row[f"{prefix}_decay"] = float(need.decay_per_day)
-                row[f"{prefix}_min"] = float(need.min_value)
-                row[f"{prefix}_max"] = float(need.max_value)
-            rows.append(row)
-        return pl.DataFrame(rows, schema=_MEMBER_FRAME_SCHEMA)
+    def _relationship_score(self, source: str, target: str) -> float:
+        if self._relationship_frame.is_empty():
+            return 0.0
+        matches = self._relationship_frame.filter(
+            (pl.col("source") == source) & (pl.col("target") == target)
+        )
+        if matches.is_empty():
+            return 0.0
+        return float(matches.get_column("score").item())
 
-    def _relationship_frame(self) -> pl.DataFrame:
-        if not self._members:
-            return pl.DataFrame(schema=_RELATIONSHIP_FRAME_SCHEMA)
-        rows: List[Dict[str, float | str]] = []
-        for name, member in self._members.items():
-            for other, score in member.relationships.items():
-                rows.append(
-                    {
-                        "source": name,
-                        "target": str(other),
-                        "score": float(score),
-                    }
-                )
-        if not rows:
-            return pl.DataFrame(schema=_RELATIONSHIP_FRAME_SCHEMA)
-        return pl.DataFrame(rows, schema=_RELATIONSHIP_FRAME_SCHEMA)
+    @staticmethod
+    def _clamp_relationship(value: float) -> float:
+        return max(-100.0, min(100.0, float(value)))
 
-    def _apply_member_frame(self, frame: pl.DataFrame) -> None:
-        for row in frame.to_dicts():
-            name = str(row.get("name", ""))
-            member = self._members.get(name)
-            if member is None:
+    def _build_member_from_frames(
+        self, name: str, row: Mapping[str, float | str] | None = None
+    ) -> CrewMember:
+        if row is None:
+            matches = self._member_frame.filter(pl.col("name") == name)
+            if matches.is_empty():
+                raise KeyError(name)
+            row = matches.to_dicts()[0]
+        needs: Dict[NeedName, Need] = {}
+        for need_name in NeedName:
+            prefix = need_name.value
+            needs[need_name] = Need(
+                name=need_name,
+                value=float(row[f"{prefix}_value"]),
+                decay_per_day=float(row[f"{prefix}_decay"]),
+                min_value=float(row[f"{prefix}_min"]),
+                max_value=float(row[f"{prefix}_max"]),
+            )
+        skill_rows = self._skill_frame.filter(pl.col("name") == name).to_dicts()
+        skills: Dict[SkillType, int] = {}
+        for skill_row in skill_rows:
+            try:
+                skill = SkillType(str(skill_row["skill"]))
+            except ValueError:
                 continue
-            member.morale = float(row.get("morale", member.morale))
-            member._clamp_morale()
-            for need_name in NeedName:
-                prefix = need_name.value
-                value_key = f"{prefix}_value"
-                if value_key in row:
-                    member.needs[need_name].value = float(row[value_key])
-
-    def _apply_relationship_frame(self, frame: pl.DataFrame) -> None:
-        updates: Dict[str, Dict[str, float]] = {name: {} for name in self._members}
-        for row in frame.to_dicts():
-            source = str(row.get("source", ""))
-            target = str(row.get("target", ""))
-            score = float(row.get("score", 0.0))
-            updates.setdefault(source, {})[target] = score
-        for name, member in self._members.items():
-            new_scores = updates.get(name, {})
-            to_remove = [key for key in member.relationships if key not in new_scores]
-            for key in to_remove:
-                member.relationships.pop(key, None)
-            for other, score in new_scores.items():
-                member.relationships[other] = score
+            skills[skill] = int(skill_row["value"])
+        trait_rows = self._trait_frame.filter(pl.col("name") == name).to_dicts()
+        traits = {str(item["trait"]) for item in trait_rows}
+        perk_rows = self._perk_frame.filter(pl.col("name") == name).to_dicts()
+        perks = {str(item["perk"]) for item in perk_rows}
+        relationship_rows = self._relationship_frame.filter(
+            pl.col("source") == name
+        ).to_dicts()
+        relationships = {
+            str(item["target"]): float(item["score"]) for item in relationship_rows
+        }
+        return CrewMember(
+            name=name,
+            morale=float(row["morale"]),
+            needs=needs,
+            skills=skills,
+            relationships=relationships,
+            traits=traits,
+            perks=perks,
+        )
 
     def _advance_member_frame(
         self,
@@ -709,7 +886,9 @@ class Crew:
         return lazy.drop(drop_cols).collect()
 
     def _equilibrate_relationships(self, frame: pl.DataFrame) -> pl.DataFrame:
-        names = list(self._members)
+        if self._member_frame.is_empty():
+            return frame
+        names = self._member_frame.get_column("name").to_list()
         if not names:
             return frame
         filtered = frame.filter(
