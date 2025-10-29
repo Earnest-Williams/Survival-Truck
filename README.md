@@ -169,50 +169,66 @@ pytest-cov = "^5.0.0"
 ## 7) Project Structure
 
 ```
-survival_truck/
+Survival-Truck/
+  README.md
   pyproject.toml
-  survival_truck/
+  poetry.lock
+  CONTRIBUTING.md
+  notes.md
+  game/
     __init__.py
-    app.py                 # Textual entry point
-    main.py                # CLI bootstrap
-    config.py              # pydantic models, defaults
-    rng.py                 # seeded numpy Generator helpers
-    hexgrid/
+    __main__.py             # CLI entry that launches the Textual UI
+    crew/
+      __init__.py           # Crew models, needs, and skill checks
+    engine/
       __init__.py
-      coords.py            # axial/cube, rings, ranges
-      path.py              # path cost helpers / NetworkX adapters
-    world/
-      gen.py               # noise-based terrain, sites
-      sites.py             # site types, attention params
-      weather.py
-      factions.py
-      graphs.py            # networkx builders
-    ecs/
-      world.py             # esper World setup
-      components.py
-      systems/
-        movement.py
-        exploitation.py
-        maintenance.py
-        diplomacy.py
-        events.py
-    ai/
-      machines.py          # transitions definitions
-    data/
-      schema.py            # pydantic models (Site, Truck, Crew, etc.)
-      persist.py           # sqlite/sqlmodel + msgpack IO
+      resource_pipeline.py  # Resource consumption and production phases
+      turn_engine.py        # Daily turn sequencing and turn context
+      world.py              # ECS world wrapper and system registration
+    events/
+      __init__.py
+      event_queue.py        # Priority queue of scheduled game events
+    factions/
+      __init__.py
+      ai.py                 # NPC faction state machines and behaviours
+      trade.py              # Trade evaluation and exchange helpers
+    time/
+      __init__.py
+      season_tracker.py     # Calendar progression and seasonal modifiers
+      weather.py            # Weighted daily weather generation
+    truck/
+      __init__.py
+      inventory.py          # Cargo accounting and spoilage tracking
+      models.py             # Truck configuration and maintenance logic
     ui/
-      views.py             # Textual screens/panels
-      map_widget.py        # ASCII map widget
-      input.py
-      theme.py
-    devtools/
-      balance.py           # plot attention curves (matplotlib)
-      prof.py
+      __init__.py
+      app.py                # Textual application wiring and layout
+      channels.py           # Message channels feeding logs and notifications
+      control_panel.py      # Turn planning helpers and control panel widget
+      dashboard.py          # Status panels and turn log renderers
+      diplomacy.py          # Diplomacy view composition
+      hex_map.py            # Hex-map widget and navigation helpers
+      truck_layout.py       # Truck layout visualisation
+    world/
+      __init__.py
+      config.py             # Pydantic world generation and storage configs
+      graph.py              # Graph utilities for travel and diplomacy
+      map/
+        __init__.py         # Hex grid types, biome noise, and chunk caching
+      persistence.py        # Save-slot storage and msgpack serialisation
+      rng.py                # Seeded RNG and noise helper factory
+      save_models.py        # Serializable models for world snapshots
+      settlements.py        # Settlement simulation tied to sites
+      sites.py              # Site state, attention curves, and interactions
   tests/
-    test_hex.py
-    test_attention.py
-    test_persist.py
+    test_crew_lifecycle.py
+    test_event_queue.py
+    test_faction_ai.py
+    test_package_metadata.py
+    test_ui_diplomacy.py
+    test_weather_system.py
+    test_world_graph.py
+    test_world_persistence_models.py
 ```
 
 ---
