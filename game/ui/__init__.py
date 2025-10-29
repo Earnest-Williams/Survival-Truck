@@ -3,6 +3,7 @@
 from .channels import LogEntry, NotificationChannel, NotificationRecord, TurnLogChannel
 from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
+from .diplomacy import DiplomacyView
 from .hex_map import HexMapView, MapSelection
 from .truck_layout import TruckLayoutView
 
@@ -17,6 +18,7 @@ __all__ = [
     "ControlPanel",
     "ControlPanelWidget",
     "DashboardView",
+    "DiplomacyView",
     "HexMapView",
     "LogEntry",
     "MapSelection",

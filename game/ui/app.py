@@ -31,6 +31,7 @@ from ..world.sites import Site
 from .channels import NotificationChannel, TurnLogChannel
 from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
+from .diplomacy import DiplomacyView
 from .hex_map import HexMapView
 from .truck_layout import TruckLayoutView
 
@@ -56,14 +57,14 @@ class SurvivalTruckApp(App):
         grid-row: 2;
         layout: grid;
         grid-columns: 3fr 2fr;
-        grid-rows: min-content min-content min-content 1fr;
+        grid-rows: min-content min-content min-content min-content 1fr;
         grid-gutter: 1;
         height: 1fr;
     }
 
     HexMapView {
         grid-column: 1;
-        grid-row: 1 / span 3;
+        grid-row: 1 / span 4;
         height: 1fr;
     }
 
@@ -72,19 +73,24 @@ class SurvivalTruckApp(App):
         grid-row: 1;
     }
 
-    #truck {
+    #diplomacy {
         grid-column: 2;
         grid-row: 2;
     }
 
-    #controls {
+    #truck {
         grid-column: 2;
         grid-row: 3;
     }
 
+    #controls {
+        grid-column: 2;
+        grid-row: 4;
+    }
+
     TurnLogWidget {
         grid-column: 1 / span 2;
-        grid-row: 4;
+        grid-row: 5;
         height: 1fr;
     }
     """
@@ -136,6 +142,7 @@ class SurvivalTruckApp(App):
 
         self.map_view = HexMapView(grid=self._map_data)
         self.dashboard = DashboardView(notification_channel=self.notification_channel)
+        self.diplomacy_view = DiplomacyView()
         self.truck_view = TruckLayoutView()
         self.control_widget = ControlPanelWidget(self.control_panel)
         self.log_widget = TurnLogWidget(self.log_channel)
@@ -145,6 +152,7 @@ class SurvivalTruckApp(App):
         with Container(id="body"):
             yield self.map_view
             yield self.dashboard
+            yield self.diplomacy_view
             yield self.truck_view
             yield self.control_widget
             yield self.log_widget
@@ -228,6 +236,20 @@ class SurvivalTruckApp(App):
         self.dashboard.update_stats(stats)
         if context is None:
             self.dashboard.set_focus_detail(None)
+
+        faction_controller_component = self.turn_engine.world.get_singleton(FactionControllerComponent)
+        controller = (
+            faction_controller_component.controller
+            if faction_controller_component is not None
+            else None
+        )
+        if controller is not None:
+            graph = controller.diplomacy.as_graph(controller.factions.keys())
+            factions = controller.factions
+        else:
+            graph = None
+            factions = {}
+        self.diplomacy_view.update_snapshot(factions=factions, graph=graph)
 
         self.log_widget.refresh_from_channel()
         self.control_widget.refresh_from_panel()
