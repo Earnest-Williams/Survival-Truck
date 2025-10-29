@@ -84,15 +84,12 @@ class WorldDailyDiffRecord(SQLModel, table=True):
 def create_world_engine(path: str | Path, *, echo: bool = False) -> Engine:
     """Return a SQLite engine for the provided ``path``."""
 
-    if isinstance(path, Path):
-        database_path = path
+    if isinstance(path, str) and path == ":memory:":
+        url = "sqlite:///:memory:"
     else:
         database_path = Path(path)
-    if str(database_path) != ":memory:":
         database_path.parent.mkdir(parents=True, exist_ok=True)
-        url = f"sqlite:///{database_path}"
-    else:
-        url = "sqlite:///:memory:"
+        url = f"sqlite:///{database_path.as_posix()}"
     return create_engine(url, echo=echo, connect_args={"check_same_thread": False})
 
 
