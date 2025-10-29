@@ -15,6 +15,7 @@ from ..truck import (
     ItemCategory,
     Truck,
 )
+from ..world.stateframes import SiteStateFrame
 from .world import CrewComponent, SitesComponent, TruckComponent
 
 
@@ -119,7 +120,11 @@ class ResourcePipeline:
             return
 
         sites_component = context.world.get_singleton(SitesComponent)
-        sites = sites_component.sites if sites_component is not None else {}
+        site_state = (
+            sites_component.sites
+            if sites_component is not None
+            else SiteStateFrame()
+        )
         orders = context.command.get("site_exploitation", [])
         if not isinstance(orders, Iterable):
             return
@@ -132,16 +137,16 @@ class ResourcePipeline:
             site_id = raw_order.get("site") or raw_order.get("site_id")
             if not site_id:
                 continue
-            site = sites.get(str(site_id))
-            if site is None:
+            site_key = str(site_id)
+            if not site_state.has_site(site_key):
                 continue
 
             produced: Dict[str, float] = {}
-            notes: Dict[str, object] = {"site": site.identifier}
+            notes: Dict[str, object] = {"site": site_key}
 
             result = raw_order.get("scavenge_result")
             if isinstance(result, SkillCheckResult):
-                progress = site.resolve_scavenge_attempt(result)
+                progress = site_state.apply_scavenge_result(site_key, result)
                 yield_key = str(raw_order.get("resource", "scavenged_goods"))
                 base_amount = max(1.0, progress / 5.0)
                 produced.update(self._apply_production(inventory, {yield_key: base_amount}))

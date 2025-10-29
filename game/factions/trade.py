@@ -13,7 +13,7 @@ from ..truck.inventory import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import guard for type checkers
-    from . import Faction
+    from .state import FactionRecord
 
 
 @dataclass
@@ -32,7 +32,7 @@ class TradeInterface:
 
     def __init__(
         self,
-        faction: "Faction",
+        faction: "FactionRecord",
         inventory: Inventory,
         *,
         supply_catalog: Mapping[str, InventoryItem] | None = None,

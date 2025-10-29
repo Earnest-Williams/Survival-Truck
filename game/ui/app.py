@@ -28,6 +28,7 @@ from ..truck.inventory import Inventory, InventoryItem, ItemCategory
 from ..world.map import BiomeNoise, HexCoord
 from ..world.rng import WorldRandomness
 from ..world.sites import Site
+from ..world.stateframes import SiteStateFrame
 from .channels import NotificationChannel, TurnLogChannel
 from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
@@ -182,17 +183,18 @@ class SurvivalTruckApp(App):
         self.world.add_singleton(FactionControllerComponent(controller))
 
         sites_obj = self.world_state.get("sites")
-        sites_map: MutableMapping[str, Site]
-        if isinstance(sites_obj, MutableMapping):
+        if isinstance(sites_obj, SiteStateFrame):
+            site_state = sites_obj
+        elif isinstance(sites_obj, MutableMapping):
             filtered: Dict[str, Site] = {}
             for key, value in sites_obj.items():
                 if isinstance(key, str) and isinstance(value, Site):
                     filtered[key] = value
-            sites_map = filtered
+            site_state = SiteStateFrame.from_sites(filtered)
         else:
-            sites_map = {}
-        self.world_state["sites"] = sites_map
-        self.world.add_singleton(SitesComponent(sites_map))
+            site_state = SiteStateFrame()
+        self.world_state["sites"] = site_state
+        self.world.add_singleton(SitesComponent(site_state))
 
     def action_next_turn(self) -> None:
         command = self.control_panel.build_command_payload()

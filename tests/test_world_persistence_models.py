@@ -23,6 +23,7 @@ from game.world.persistence import (
 from game.world.rng import WorldRandomness
 from game.world.save_models import WorldSnapshot
 from game.world.sites import AttentionCurve, Site, SiteType
+from game.world.stateframes import SiteStateFrame
 
 
 def _make_chunk() -> MapChunk:
@@ -89,8 +90,9 @@ def test_world_snapshot_round_trip() -> None:
 
     restored_state = snapshot.to_world_state()
     assert restored_state["notes"] == ["Arrived at camp"]
-    assert site.identifier in restored_state["sites"]
-    assert isinstance(restored_state["sites"][site.identifier], Site)
+    site_state = restored_state["sites"]
+    assert isinstance(site_state, SiteStateFrame)
+    assert site.identifier in site_state.as_mapping()
 
 
 def test_persistence_round_trip(tmp_path: Path) -> None:
@@ -136,8 +138,10 @@ def test_persistence_round_trip(tmp_path: Path) -> None:
     restored_state = loaded_snapshot.to_world_state()
     assert restored_state["notes"] == ["Camp established"]
     restored_sites = restored_state["sites"]
-    assert "beta" in restored_sites
-    assert "gamma" in restored_sites
+    assert isinstance(restored_sites, SiteStateFrame)
+    site_map = restored_sites.as_mapping()
+    assert "beta" in site_map
+    assert "gamma" in site_map
     assert restored_sites["beta"].site_type is SiteType.FARM
     assert "gamma" in restored_sites["beta"].connections
     assert restored_sites["gamma"].site_type is SiteType.CITY
