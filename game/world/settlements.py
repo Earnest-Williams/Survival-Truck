@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Mapping, MutableMapping
+from typing import Dict, Iterable, List, Mapping, MutableMapping, TypedDict
 
 from numpy.random import Generator
 
@@ -12,6 +12,19 @@ from .sites import Site
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))
+
+
+class SettlementPayload(TypedDict, total=False):
+    """Serialized representation of a :class:`Settlement`."""
+
+    identifier: str
+    site_id: str
+    name: str
+    population: int
+    morale: float | int
+    prosperity: float | int
+    security: float | int
+    resources: Mapping[str, int | float]
 
 
 @dataclass
@@ -63,7 +76,7 @@ class Settlement:
             prosperity_shift -= deficit * 0.02
         self.prosperity = _clamp(self.prosperity + prosperity_shift, 0.0, 5.0)
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> SettlementPayload:
         return {
             "identifier": self.identifier,
             "site_id": self.site_id,
@@ -76,7 +89,7 @@ class Settlement:
         }
 
     @staticmethod
-    def from_dict(payload: Mapping[str, object]) -> "Settlement":
+    def from_dict(payload: SettlementPayload | Mapping[str, object]) -> "Settlement":
         resources_payload = payload.get("resources", {})
         resources: Dict[str, int] = {}
         if isinstance(resources_payload, Mapping):

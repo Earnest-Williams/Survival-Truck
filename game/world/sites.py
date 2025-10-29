@@ -173,7 +173,9 @@ class Site:
         self.connections[neighbour] = cost_value
 
     @staticmethod
-    def _normalise_connections(identifier: str, data: Mapping[str, object] | object) -> Dict[str, float]:
+    def _normalise_connections(
+        identifier: str, data: Mapping[str, float | int | str] | None
+    ) -> Dict[str, float]:
         if not data:
             return {}
         if not isinstance(data, Mapping):
