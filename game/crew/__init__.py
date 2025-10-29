@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-import random
 from typing import (
     Dict,
     Iterable,
@@ -18,6 +17,9 @@ from typing import (
 )
 
 import polars as pl
+from numpy.random import Generator, default_rng
+
+from ..world.rng import WorldRandomness
 
 
 class NeedName(str, Enum):
@@ -293,13 +295,13 @@ def perform_skill_check(
     actor: CrewMember,
     skill: SkillType,
     difficulty: float,
-    rng: random.Random | None = None,
+    rng: Generator | None = None,
 ) -> SkillCheckResult:
     """Resolve an individual skill check for ``actor``."""
 
-    rng = rng or random.Random()
+    rng = rng or default_rng()
     base = actor.skill_value(skill) + actor.morale_modifier()
-    roll = base + rng.randint(1, 20)
+    roll = base + int(rng.integers(1, 20, endpoint=True))
     margin = roll - difficulty
     return SkillCheckResult(
         skill=skill,
@@ -315,7 +317,7 @@ def team_skill_check(
     actors: Iterable[CrewMember],
     skill: SkillType,
     difficulty: float,
-    rng: random.Random | None = None,
+    rng: Generator | None = None,
 ) -> SkillCheckResult:
     """Resolve a cooperative skill check for multiple crew members."""
 
@@ -326,10 +328,10 @@ def team_skill_check(
         contributions.append(actor.skill_value(skill) + actor.morale_modifier())
     if not contributions:
         raise ValueError("team_skill_check requires at least one participant")
-    rng = rng or random.Random()
+    rng = rng or default_rng()
     contributions.sort(reverse=True)
     base = sum(contributions[:2]) + sum(contribution * 0.25 for contribution in contributions[2:])
-    roll = base + rng.randint(1, 20)
+    roll = base + int(rng.integers(1, 20, endpoint=True))
     margin = roll - difficulty
     return SkillCheckResult(
         skill=skill,
@@ -348,12 +350,16 @@ class Crew:
         self,
         members: Iterable[CrewMember] | None = None,
         *,
-        rng: random.Random | None = None,
+        rng: Generator | None = None,
+        randomness: WorldRandomness | None = None,
         trait_impacts: Mapping[str, TraitImpact] | None = None,
         perk_impacts: Mapping[str, TraitImpact] | None = None,
     ) -> None:
         self._members: Dict[str, CrewMember] = {}
-        self.rng = rng or random.Random()
+        if randomness is not None:
+            self.rng = randomness.generator("crew")
+        else:
+            self.rng = rng or default_rng()
         self.trait_impacts: Dict[str, TraitImpact] = dict(trait_impacts or {})
         self.perk_impacts: Dict[str, TraitImpact] = dict(perk_impacts or {})
         for member in members or []:
@@ -461,7 +467,7 @@ class Crew:
             a = self._members[first]
             b = self._members[second]
             attitude = (a.relationships.get(second, 0.0) + b.relationships.get(first, 0.0)) / 2
-            delta = self.rng.uniform(-2.0, 3.0)
+            delta = float(self.rng.uniform(-2.0, 3.0))
             if attitude > 25:
                 delta = abs(delta)
             elif attitude < -25:

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import math
-import random
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 from typing import Dict, List, TypeAlias, TypedDict, cast
 
 import networkx as nx
+from numpy.random import Generator, default_rng
 from transitions import Machine
 
 from ..world.graph import (
@@ -18,6 +18,7 @@ from ..world.graph import (
     shortest_path_between_sites,
 )
 from ..world.map import HexCoord
+from ..world.rng import WorldRandomness
 from ..world.sites import Site
 from . import Caravan, Faction, FactionDiplomacy
 
@@ -45,13 +46,17 @@ class FactionAIController:
         *,
         diplomacy: FactionDiplomacy | None = None,
         movement_graph: nx.Graph | None = None,
-        rng: random.Random | None = None,
+        rng: Generator | None = None,
+        randomness: "WorldRandomness" | None = None,
     ) -> None:
         self._factions: Dict[str, Faction] = {faction.name: faction for faction in (factions or [])}
         self.diplomacy = diplomacy or FactionDiplomacy()
         self._movement_graph: nx.Graph | None = movement_graph
         self._diplomacy_graph: nx.Graph | None = None
-        self.rng = rng or random.Random()
+        if randomness is not None:
+            self.rng = randomness.generator("faction-ai")
+        else:
+            self.rng = rng or default_rng()
         self._current_sites: Dict[str, Site] = {}
         self._pending_movements: Dict[str, List[Caravan]] = {}
         self._state_path: List[str] = []
@@ -340,7 +345,7 @@ class FactionAIController:
                 trade_value = caravan.unload_all_cargo()
                 if trade_value <= 0:
                     good = faction.preferred_trade_good() if faction else "supplies"
-                    caravan.add_cargo(good, self.rng.randint(1, 3))
+                    caravan.add_cargo(good, int(self.rng.integers(1, 3, endpoint=True)))
                     continue
                 if faction is not None:
                     faction.adjust_resource("wealth", trade_value)
@@ -392,7 +397,7 @@ class FactionAIController:
             defender = self._select_caravan_from_faction(caravans, faction_b)
             if attacker is None or defender is None:
                 continue
-            if self.rng.random() < 0.5:
+            if float(self.rng.random()) < 0.5:
                 attacker, defender = defender, attacker
                 faction_a, faction_b = faction_b, faction_a
             lost_value = defender.unload_all_cargo()

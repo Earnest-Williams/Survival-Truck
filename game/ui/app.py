@@ -167,15 +167,17 @@ class SurvivalTruckApp(App):
         if isinstance(truck, Truck):
             self.world.add_singleton(TruckComponent(truck))
             self.world_state["truck"] = truck
+        randomness = self.world_state.get("randomness")
+        world_rng = randomness if isinstance(randomness, WorldRandomness) else None
         crew_obj = self.world_state.get("crew")
         if not isinstance(crew_obj, Crew):
-            crew_obj = Crew()
+            crew_obj = Crew(randomness=world_rng)
             self.world_state["crew"] = crew_obj
         self.world.add_singleton(CrewComponent(crew_obj))
 
         controller = self.world_state.get("faction_controller")
         if not isinstance(controller, FactionAIController):
-            controller = FactionAIController()
+            controller = FactionAIController(randomness=world_rng)
             self.world_state["faction_controller"] = controller
         self.world.add_singleton(FactionControllerComponent(controller))
 
