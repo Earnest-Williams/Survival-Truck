@@ -49,9 +49,31 @@ class SurvivalTruckApp(App):
     """Interactive Textual application for Survival Truck."""
 
     CSS = """
+    :root {
+        background: #0f0f0f;
+        surface: #141414;
+        surface-lighten-1: #1c1c1c;
+        text: #c0c0c0;
+        text-muted: #7a7a7a;
+        accent: #4db6ac;
+    }
+
+    * {
+        border: none;
+        background: $surface;
+        color: $text;
+    }
+
     Screen {
         layout: grid;
         grid-rows: auto 1fr auto;
+        background: $background;
+    }
+
+    Header, Footer {
+        background: $surface-lighten-1;
+        color: $text-muted;
+        text-style: bold;
     }
 
     #body {
@@ -59,35 +81,31 @@ class SurvivalTruckApp(App):
         grid-size: 2 5;
         grid-columns: 3fr 2fr;
         grid-rows: auto auto auto auto 1fr;
-        grid-gutter: 1;
-        height: 1fr;
+        grid-gutter: 1 2;
+        padding: 1;
     }
 
-    /* TODO: Verify compose() order to achieve the intended cell placement.
-       Desired order:
-         1) HexMapView        (left column, rows 1–4 via row-span)
-         2) #status           (right column, row 1)
-         3) #diplomacy        (right column, row 2)
-         4) #truck            (right column, row 3)
-         5) #controls         (right column, row 4)
-         6) TurnLogWidget     (row 5, spans both columns)
-    */
+    HexMapView,
+    #status,
+    #diplomacy,
+    #truck,
+    #controls,
+    TurnLogWidget {
+        padding: 1;
+        background: $surface;
+    }
+
     HexMapView {
         row-span: 4;
-        height: 1fr;
     }
-
-    #status { }
-
-    #diplomacy { }
-
-    #truck { }
-
-    #controls { }
 
     TurnLogWidget {
         column-span: 2;
-        height: 1fr;
+        border-top: tall $accent;
+    }
+
+    #status {
+        border-top: tall $accent;
     }
     """
 
