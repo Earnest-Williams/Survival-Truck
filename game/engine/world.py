@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import (  # noqa: D401 - aggregate re-export module
+from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
-    MutableMapping,
     Protocol,
     Tuple,
     Type,
@@ -55,7 +54,7 @@ else:  # pragma: no cover - fallback for stripped-down esper installs
 from ..crew import Crew
 from ..factions import FactionAIController
 from ..truck import Truck
-from ..world.sites import Site
+from ..world.stateframes import SiteStateFrame
 
 if TYPE_CHECKING:  # pragma: no cover - imported only for typing
     from .turn_engine import TurnContext
@@ -88,9 +87,9 @@ class FactionControllerComponent:
 
 @dataclass(slots=True)
 class SitesComponent:
-    """Collection of known world sites."""
+    """Collection of known world sites backed by a :class:`SiteStateFrame`."""
 
-    sites: MutableMapping[str, Site]
+    sites: SiteStateFrame
 
 
 class SystemCallback(Protocol):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from rich.console import Console
 
-from game.factions import Faction, FactionDiplomacy
+from game.factions import FactionDiplomacy, FactionLedger
 from game.ui.diplomacy import DiplomacyView
 
 
@@ -16,11 +16,14 @@ def _render_widget(widget: DiplomacyView) -> str:
 
 def test_diplomacy_view_renders_standings_and_alliances() -> None:
     view = DiplomacyView()
-    factions = {
-        "Northern Guild": Faction(name="Northern Guild"),
-        "Dune Riders": Faction(name="Dune Riders"),
-        "River Union": Faction(name="River Union"),
-    }
+    ledger = FactionLedger.from_payload(
+        [
+            {"name": "Northern Guild"},
+            {"name": "Dune Riders"},
+            {"name": "River Union"},
+        ]
+    )
+    factions = {record.name: record for record in ledger.iterate_factions()}
     diplomacy = FactionDiplomacy()
     diplomacy.set_standing("Northern Guild", "Dune Riders", 22.5)
     diplomacy.set_standing("Northern Guild", "River Union", -12.0)

@@ -8,7 +8,7 @@ from typing import Mapping
 import networkx as nx
 from textual.widget import Widget
 
-from ..factions import Faction
+from ..factions import FactionRecord
 from ..world.graph import allied_factions
 
 
@@ -16,7 +16,7 @@ from ..world.graph import allied_factions
 class DiplomacySnapshot:
     """Light-weight container describing current diplomacy state."""
 
-    factions: Mapping[str, Faction]
+    factions: Mapping[str, FactionRecord]
     graph: nx.Graph | None
 
 
@@ -37,7 +37,7 @@ class DiplomacyView(Widget):
         self._snapshot = DiplomacySnapshot(factions={}, graph=None)
 
     # ------------------------------------------------------------------
-    def update_snapshot(self, factions: Mapping[str, Faction], graph: nx.Graph | None) -> None:
+    def update_snapshot(self, factions: Mapping[str, FactionRecord], graph: nx.Graph | None) -> None:
         """Store the latest diplomacy state and refresh the widget."""
 
         self._snapshot = DiplomacySnapshot(factions=dict(factions), graph=graph)

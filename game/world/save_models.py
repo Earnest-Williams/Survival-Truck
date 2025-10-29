@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .map import BiomeType, ChunkCoord, MapChunk
 from .sites import AttentionCurve, Site, SiteType
+from .stateframes import SiteStateFrame
 
 _SIMPLE_TYPES = (str, int, float, bool)
 _DROP = object()
@@ -443,10 +444,16 @@ class WorldSnapshot(BaseModel):
         world_state: Mapping[str, object] | None = None,
     ) -> "WorldSnapshot":
         site_map: Mapping[str, Site] = sites or {}
-        if not site_map and world_state and isinstance(world_state.get("sites"), Mapping):
-            candidate = world_state["sites"]
-            if isinstance(candidate, Mapping) and all(isinstance(v, Site) for v in candidate.values()):
-                site_map = candidate  # type: ignore[assignment]
+        if not site_map and world_state:
+            candidate = world_state.get("sites")
+            if isinstance(candidate, SiteStateFrame):
+                site_map = candidate.as_mapping()
+            elif isinstance(candidate, Mapping):
+                filtered: Dict[str, Site] = {}
+                for key, value in candidate.items():
+                    if isinstance(key, str) and isinstance(value, Site):
+                        filtered[key] = value
+                site_map = filtered
         chunk_models = [ChunkSnapshot.from_chunk(chunk) for chunk in chunks]
         site_models = [SiteSnapshot.from_site(site) for _, site in sorted(site_map.items())]
         payload = WorldStatePayload.from_mapping(world_state)
@@ -462,7 +469,7 @@ class WorldSnapshot(BaseModel):
     def to_world_state(self) -> Dict[str, object]:
         payload = WorldStatePayload.from_mapping(self.world_state)
         state = payload.to_state_dict()
-        state["sites"] = self.to_site_map()
+        state["sites"] = SiteStateFrame.from_sites(self.to_site_map())
         return state
 
     def metadata(self, *, summary: str | None = None, created_at: datetime | None = None) -> "WorldSnapshotMetadata":

@@ -1,5 +1,5 @@
 from game.factions import Caravan, Faction, FactionDiplomacy
-from game.factions.ai import FactionAIController
+from game.factions import FactionAIController, FactionDiplomacy
 from game.world.rng import WorldRandomness
 from game.world.sites import Site
 
@@ -9,14 +9,20 @@ def _make_site(identifier: str, controlling: str | None = None) -> Site:
 
 
 def test_faction_ai_plans_routes_with_networkx() -> None:
-    traders = Faction(name="Traders")
-    caravan = Caravan(identifier="caravan-1", faction_name="Traders", location="alpha")
-    traders.register_caravan(caravan)
+    factions = [
+        {
+            "name": "Traders",
+            "caravans": {
+                "caravan-1": {"identifier": "caravan-1", "location": "alpha"}
+            },
+        },
+        {"name": "Nomads"},
+    ]
 
     diplomacy = FactionDiplomacy()
     randomness = WorldRandomness(seed=0)
     ai = FactionAIController(
-        [traders, Faction(name="Nomads")],
+        factions,
         diplomacy=diplomacy,
         rng=randomness.generator("test-factions"),
     )
@@ -48,25 +54,32 @@ def test_faction_ai_plans_routes_with_networkx() -> None:
 
     ai.run_turn(world_state=world_state, day=1)
 
+    caravan = ai.factions["Traders"].caravans["caravan-1"]
     assert caravan.location == "alpha"
     assert caravan.route == ["alpha", "beta", "gamma"]
 
     ai.run_turn(world_state=world_state, day=2)
 
+    caravan = ai.factions["Traders"].caravans["caravan-1"]
     assert caravan.location == "beta"
     assert caravan.route == ["gamma"]
     assert caravan.days_until_move == 2
 
 
 def test_faction_ai_fsm_cycle_records_path() -> None:
-    traders = Faction(name="Traders")
-    caravan = Caravan(identifier="caravan-1", faction_name="Traders", location="alpha")
-    traders.register_caravan(caravan)
+    factions = [
+        {
+            "name": "Traders",
+            "caravans": {
+                "caravan-1": {"identifier": "caravan-1", "location": "alpha"}
+            },
+        }
+    ]
 
     diplomacy = FactionDiplomacy()
     randomness = WorldRandomness(seed=0)
     ai = FactionAIController(
-        [traders], diplomacy=diplomacy, rng=randomness.generator("test-factions")
+        factions, diplomacy=diplomacy, rng=randomness.generator("test-factions")
     )
 
     world_state = {"sites": {"alpha": _make_site("alpha", "Traders")}}
