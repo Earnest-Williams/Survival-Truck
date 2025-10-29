@@ -14,6 +14,7 @@ from typing import (
     MutableSet,
     Sequence,
     Set,
+    TypedDict,
 )
 
 
@@ -70,6 +71,19 @@ class SkillType(str, Enum):
     NEGOTIATION = "negotiation"
     ENGINEERING = "engineering"
     MEDICINE = "medicine"
+
+
+class CrewMemberPayload(TypedDict, total=False):
+    """Serialized representation of a :class:`CrewMember`."""
+
+    name: str
+    morale: float | int
+    needs: Mapping[str, float | int]
+    decay: Mapping[str, float | int]
+    skills: Mapping[str, int | float]
+    relationships: Mapping[str, float | int]
+    traits: Iterable[str]
+    perks: Iterable[str]
 
 
 @dataclass
@@ -157,7 +171,7 @@ class CrewMember:
         self.morale += quality * 0.1
         self._clamp_morale()
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> CrewMemberPayload:
         """Serialize the crew member to a JSON compatible mapping."""
 
         return {
@@ -172,7 +186,7 @@ class CrewMember:
         }
 
     @staticmethod
-    def from_dict(payload: Mapping[str, object]) -> "CrewMember":
+    def from_dict(payload: CrewMemberPayload | Mapping[str, object]) -> "CrewMember":
         """Deserialize a :class:`CrewMember` from a mapping."""
 
         name = str(payload.get("name", ""))

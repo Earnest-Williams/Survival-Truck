@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Dict, Iterable, List, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Mapping, Sequence
+from typing import Dict, List, TypeAlias, TypedDict, cast
 
 import networkx as nx
 from transitions import Machine
@@ -19,6 +20,20 @@ from ..world.graph import (
 from ..world.map import HexCoord
 from ..world.sites import Site
 from . import Caravan, Faction, FactionDiplomacy
+
+
+class SitePositionRecord(TypedDict, total=False):
+    """Serializable representation of a site position."""
+
+    q: int | str
+    r: int | str
+
+
+CoordLike: TypeAlias = HexCoord | Mapping[str, int | str] | Sequence[int | str] | str
+SiteCollectionInput = Mapping[str, Site] | Iterable[Site]
+SitePositionPayload = Mapping[str, CoordLike]
+SiteConnectionsPayload = Mapping[str, Sequence[str | int]]
+TerrainCostPayload = Mapping[Hashable, float | int | str]
 
 
 class FactionAIController:
@@ -37,7 +52,7 @@ class FactionAIController:
         self._movement_graph: nx.Graph | None = movement_graph
         self._diplomacy_graph: nx.Graph | None = None
         self.rng = rng or random.Random()
-        self._current_sites: Mapping[str, Site] = {}
+        self._current_sites: Dict[str, Site] = {}
         self._pending_movements: Dict[str, List[Caravan]] = {}
         self._state_path: List[str] = []
 
@@ -83,7 +98,8 @@ class FactionAIController:
     def run_turn(self, *, world_state: Mapping[str, object], day: int) -> None:
         """Execute faction behaviours for the current day."""
 
-        sites = self._extract_sites(world_state.get("sites"))
+        raw_sites = cast(SiteCollectionInput | None, world_state.get("sites"))
+        sites = self._extract_sites(raw_sites)
         self._movement_graph = self._refresh_movement_graph(world_state, sites)
         self._diplomacy_graph = self.diplomacy.as_graph(self._factions.keys())
 
@@ -119,7 +135,7 @@ class FactionAIController:
         self.diplomacy.decay()
 
     # ------------------------------------------------------------------
-    def _extract_sites(self, raw_sites: object) -> Dict[str, Site]:
+    def _extract_sites(self, raw_sites: SiteCollectionInput | None) -> Dict[str, Site]:
         if raw_sites is None:
             return {}
         if isinstance(raw_sites, Mapping):
@@ -136,7 +152,9 @@ class FactionAIController:
             return result
         return {}
 
-    def _extract_site_positions(self, payload: object) -> Dict[str, HexCoord]:
+    def _extract_site_positions(
+        self, payload: SitePositionPayload | None
+    ) -> Dict[str, HexCoord]:
         positions: Dict[str, HexCoord] = {}
         if not isinstance(payload, Mapping):
             return positions
@@ -147,7 +165,9 @@ class FactionAIController:
             positions[str(key)] = coord
         return positions
 
-    def _extract_site_connections(self, payload: object) -> Mapping[str, Sequence[str]]:
+    def _extract_site_connections(
+        self, payload: SiteConnectionsPayload | None
+    ) -> Dict[str, List[str]]:
         connections: Dict[str, List[str]] = {}
         if not isinstance(payload, Mapping):
             return connections
@@ -156,8 +176,10 @@ class FactionAIController:
                 connections[str(key)] = [str(item) for item in value]
         return connections
 
-    def _extract_terrain_costs(self, payload: object) -> Mapping[object, float]:
-        costs: Dict[object, float] = {}
+    def _extract_terrain_costs(
+        self, payload: TerrainCostPayload | None
+    ) -> Dict[Hashable, float]:
+        costs: Dict[Hashable, float] = {}
         if not isinstance(payload, Mapping):
             return costs
         for key, value in payload.items():
@@ -170,11 +192,17 @@ class FactionAIController:
     def _refresh_movement_graph(
         self, world_state: Mapping[str, object], sites: Mapping[str, Site]
     ) -> nx.Graph | None:
-        positions = self._extract_site_positions(world_state.get("site_positions"))
+        positions = self._extract_site_positions(
+            cast(SitePositionPayload | None, world_state.get("site_positions"))
+        )
         if not positions:
             return self._movement_graph
-        connections = self._extract_site_connections(world_state.get("site_connections"))
-        terrain_costs = self._extract_terrain_costs(world_state.get("terrain_costs"))
+        connections = self._extract_site_connections(
+            cast(SiteConnectionsPayload | None, world_state.get("site_connections"))
+        )
+        terrain_costs = self._extract_terrain_costs(
+            cast(TerrainCostPayload | None, world_state.get("terrain_costs"))
+        )
         graph = build_site_movement_graph(
             positions,
             connections=connections if connections else None,
@@ -345,7 +373,7 @@ class FactionAIController:
             return None
         return self.rng.choice(candidates)
 
-    def _coerce_coord(self, value: object) -> HexCoord | None:
+    def _coerce_coord(self, value: CoordLike) -> HexCoord | None:
         if isinstance(value, HexCoord):
             return value
         if isinstance(value, Mapping):
