@@ -129,14 +129,18 @@ class ControlPanelWidget(Widget):
     class PlanUpdated(Message):
         """Notify listeners that the staged plan changed."""
 
-        def __init__(self, sender: "ControlPanelWidget") -> None:
-            super().__init__(sender)
+        def __init__(self, control: "ControlPanelWidget") -> None:
+            # Textual Message.__init__ takes no sender argument now.
+            # Keep a reference if handlers need the widget.
+            self.control = control
+            super().__init__()
 
     class PlanReset(Message):
         """Raised when the plan has been cleared via the widget."""
 
-        def __init__(self, sender: "ControlPanelWidget") -> None:
-            super().__init__(sender)
+        def __init__(self, control: "ControlPanelWidget") -> None:
+            self.control = control
+            super().__init__()
 
     def __init__(self, panel: ControlPanel | None = None, *, title: str | None = None) -> None:
         super().__init__(id="controls")
