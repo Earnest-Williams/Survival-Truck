@@ -19,6 +19,7 @@ class SiteType(str, Enum):
     FARM = "farm"
     POWER_PLANT = "power_plant"
     CAMP = "camp"
+    OUTPOST = "outpost"
     MILITARY_RUINS = "military_ruins"
 
 

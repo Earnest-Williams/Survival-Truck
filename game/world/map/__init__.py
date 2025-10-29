@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, ClassVar, Dict, Iterator, Mapping, MutableMapping, Tuple
+from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Iterator, Mapping, MutableMapping, Tuple
 
 from opensimplex import OpenSimplex
 
 from ..rng import WorldRandomness
-from ..sites import AttentionCurve, Site, SiteType
+
+if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
+    from ..sites import AttentionCurve, Site, SiteType
 
 
 class BiomeType(str, Enum):
@@ -201,7 +203,7 @@ class ChunkStreamer:
 class SiteNetwork:
     """Generated site placements and their connectivity graph."""
 
-    sites: Dict[str, Site]
+    sites: Dict[str, "Site"]
     positions: Dict[str, HexCoord]
     connections: Dict[str, Dict[str, float]]
 
@@ -222,31 +224,6 @@ class SiteNetwork:
                 "connections": connection_payload,
             },
         }
-
-
-_SITE_TYPE_WEIGHTS: Dict[SiteType, float] = {
-    SiteType.CITY: 0.18,
-    SiteType.FARM: 0.26,
-    SiteType.POWER_PLANT: 0.12,
-    SiteType.CAMP: 0.3,
-    SiteType.MILITARY_RUINS: 0.14,
-}
-
-_SITE_ATTENTION_PROFILES: Dict[SiteType, tuple[float, float, float]] = {
-    SiteType.CITY: (2.4, 40.0, 16.0),
-    SiteType.FARM: (1.8, 28.0, 12.0),
-    SiteType.POWER_PLANT: (2.0, 32.0, 14.0),
-    SiteType.CAMP: (1.5, 22.0, 9.0),
-    SiteType.MILITARY_RUINS: (2.2, 35.0, 13.0),
-}
-
-_SITE_POPULATION_RANGES: Dict[SiteType, tuple[int, int]] = {
-    SiteType.CITY: (500, 2500),
-    SiteType.FARM: (80, 400),
-    SiteType.POWER_PLANT: (40, 200),
-    SiteType.CAMP: (15, 120),
-    SiteType.MILITARY_RUINS: (0, 150),
-}
 
 
 def generate_site_network(
@@ -286,21 +263,50 @@ def generate_site_network(
     if len(positions) < site_count:
         raise RuntimeError("failed to place the requested number of sites within radius")
 
-    weights_total = sum(_SITE_TYPE_WEIGHTS.values())
-    type_choices = list(_SITE_TYPE_WEIGHTS.keys())
-    probabilities = [weight / weights_total for weight in _SITE_TYPE_WEIGHTS.values()]
+    from ..sites import AttentionCurve, Site, SiteType
+
+    site_type_weights: Dict[SiteType, float] = {
+        SiteType.CITY: 0.18,
+        SiteType.FARM: 0.26,
+        SiteType.POWER_PLANT: 0.12,
+        SiteType.CAMP: 0.3,
+        SiteType.OUTPOST: 0.1,
+        SiteType.MILITARY_RUINS: 0.14,
+    }
+
+    attention_profiles: Dict[SiteType, tuple[float, float, float]] = {
+        SiteType.CITY: (2.4, 40.0, 16.0),
+        SiteType.FARM: (1.8, 28.0, 12.0),
+        SiteType.POWER_PLANT: (2.0, 32.0, 14.0),
+        SiteType.CAMP: (1.5, 22.0, 9.0),
+        SiteType.OUTPOST: (1.7, 24.0, 10.0),
+        SiteType.MILITARY_RUINS: (2.2, 35.0, 13.0),
+    }
+
+    population_ranges: Dict[SiteType, tuple[int, int]] = {
+        SiteType.CITY: (500, 2500),
+        SiteType.FARM: (80, 400),
+        SiteType.POWER_PLANT: (40, 200),
+        SiteType.CAMP: (15, 120),
+        SiteType.OUTPOST: (20, 160),
+        SiteType.MILITARY_RUINS: (0, 150),
+    }
+
+    weights_total = sum(site_type_weights.values())
+    type_choices = list(site_type_weights.keys())
+    probabilities = [weight / weights_total for weight in site_type_weights.values()]
 
     sites: Dict[str, Site] = {}
     for identifier in positions:
         choice_index = int(rng.choice(len(type_choices), p=probabilities))
         site_type: SiteType = type_choices[choice_index]
-        peak, mu, sigma = _SITE_ATTENTION_PROFILES[site_type]
+        peak, mu, sigma = attention_profiles[site_type]
         curve = AttentionCurve(
             peak=max(0.1, peak + float(rng.uniform(-0.2, 0.2))),
             mu=max(0.0, mu + float(rng.uniform(-5.0, 5.0))),
             sigma=max(1.0, sigma + float(rng.uniform(-2.0, 2.0))),
         )
-        pop_low, pop_high = _SITE_POPULATION_RANGES[site_type]
+        pop_low, pop_high = population_ranges[site_type]
         population = int(rng.integers(pop_low, pop_high + 1))
         exploration = float(rng.uniform(0.0, 5.0))
         scavenged = float(rng.uniform(0.0, 3.0))

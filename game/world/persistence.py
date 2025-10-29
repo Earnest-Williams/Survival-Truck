@@ -204,7 +204,7 @@ def store_season_snapshot(
 
     summary: str | None = None
     if metadata is None and season:
-        summary = f"{season.title()} season snapshot (day {snapshot.day})"
+        summary = f"Day {snapshot.day}: {season.title()} season snapshot"
     meta = metadata or snapshot.metadata(summary=summary)
     snapshot_blob = _pack_model(snapshot)
     metadata_blob = _pack_model(meta)
