@@ -38,6 +38,32 @@ This project is managed with [Poetry](https://python-poetry.org/) for reproducib
 
 The generated `poetry.lock` file pins transitive dependencies to ensure consistent builds across machines.
 
+### Dependency reference
+
+The authoritative dependency list lives in [`pyproject.toml`](pyproject.toml):
+
+```toml
+[tool.poetry.dependencies]
+python = "^3.12"
+textual = "^0.60.1"
+rich = "^13.8.0"
+networkx = "^3.4.2"
+sqlmodel = "^0.0.22"
+sqlalchemy = "^2.0.32"
+numpy = "^2.1.1"
+opensimplex = "^0.4.5"
+pydantic = "^2.9.2"
+esper = "^2.5"
+transitions = "^0.9.2"
+msgpack = "^1.0.8"
+zstandard = "^0.23.0"
+platformdirs = "^4.3.6"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+pytest-cov = "^5.0.0"
+```
+
 ---
 
 ## 2) World and Game Structure
@@ -57,24 +83,20 @@ The generated `poetry.lock` file pins transitive dependencies to ensure consiste
 
 ### 3.1 Core libraries by function
 
-| Function                      | Library                                                            | Why                                                               |
-| ----------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| **TUI rendering**             | `textual` (+ `rich`)                                               | Fast, composable terminal UI, panels, tables, keyboard input.     |
-| **Hex math**                  | `hexalattice` *(for layout utilities)* or custom axial/cube module | Axial/cube coords, rings, ranges. Minimal dependencies preferred. |
-| **Pathfinding**               | `pathfinding` or `networkx` A*                                     | Weighted A* on grids; `networkx` doubles for road graphs.         |
-| **Noise fields**              | `opensimplex` or `noise`                                           | Terrain, resource richness, weather.                              |
-| **RNG / distributions**       | `numpy` random `Generator` (PCG64 or SFC64)                        | Deterministic seeding, vectorised draws.                          |
-| **ECS**                       | `esper`                                                            | Lightweight, pure-Python ECS.                                     |
-| **Event queue**               | stdlib `heapq`                                                     | Deterministic priority queue for scheduled events.                |
-| **FSM / statecharts**         | `transitions`                                                      | Declarative state machines for AI and UI flows.                   |
-| **Graphs (diplomacy/trade)**  | `networkx`                                                         | Relations, routes, coalition logic.                               |
-| **Data validation**           | `pydantic` v2                                                      | Runtime-validated configs, saves, module specs.                   |
-| **Persistence (DB)**          | `sqlite3` + `sqlmodel` or `sqlite-utils`                           | Simple, durable world storage; easy queries.                      |
-| **Serialization (snapshots)** | `msgpack` or `orjson` + `zstandard`                                | Compact saves and seasonal snapshots.                             |
-| **Job offloading**            | `multiprocessing` / `concurrent.futures`                           | Background world ticks and path searches.                         |
-| **Dev charts (optional)**     | `matplotlib`                                                       | Balancing plots: attention curves, fuel series.                   |
-| **Config & paths**            | `platformdirs`, `tomli`                                            | OS-appropriate save/config paths; TOML configs.                   |
-| **Packaging**                 | `poetry` or `uv`                                                   | Reproducible env, lockfile, scripts.                              |
+| Function                      | Library/libraries             | Why it’s used                                                   |
+| ----------------------------- | ----------------------------- | ---------------------------------------------------------------- |
+| **TUI rendering**             | `textual`, `rich`             | Compose panes, widgets, and stylised terminal output.             |
+| **Graphs & pathfinding**      | `networkx`                    | Diplomacy graphs, logistics networks, and route calculations.     |
+| **Persistence / ORM**         | `sqlmodel`, `sqlalchemy`      | Typed models on SQLite backed by SQLAlchemy’s engine.             |
+| **Data validation**           | `pydantic`                    | Runtime-validated configs, saves, and schema definitions.         |
+| **ECS**                       | `esper`                       | Lightweight entity-component-system loop.                         |
+| **State machines**            | `transitions`                 | Declarative AI and UI flow charts.                                |
+| **RNG & numerics**            | `numpy`                       | Deterministic seeding and vectorised random draws.                |
+| **Noise fields**              | `opensimplex`                 | Procedural terrain and resource layers.                           |
+| **Serialization & compression** | `msgpack`, `zstandard`      | Compact, compressed world snapshots and diffs.                    |
+| **Config & save paths**       | `platformdirs`                | OS-appropriate locations for config, cache, and save data.        |
+| **Testing**                   | `pytest`, `pytest-cov`        | Core unit tests and coverage reporting.                           |
+| **Packaging**                 | `poetry`                      | Dependency management and application entry points.               |
 
 > Minimalism rule: prefer stdlib where feasible; add third-party only where it saves real time or improves clarity.
 
@@ -87,7 +109,7 @@ The generated `poetry.lock` file pins transitive dependencies to ensure consiste
 * Seed → `numpy.random.Generator`.
 * Terrain/resource layers → `opensimplex`.
 * Regions and roads → `networkx` graphs (sites as nodes, roads as edges).
-* Output validated by `pydantic` and written to SQLite.
+* Output validated by `pydantic` and written via `sqlmodel`/`sqlalchemy` to SQLite.
 
 **Simulation Core (per day)**
 
@@ -95,12 +117,12 @@ The generated `poetry.lock` file pins transitive dependencies to ensure consiste
 * Systems run in order: movement → site exploitation → maintenance → diplomacy → events.
 * Scheduled effects in `heapq` (repairs complete on day N, storms arrive day M).
 * AI state machines with `transitions` consult `networkx` (routes/relations).
-* Pathfinding via `pathfinding` A* over hex costs.
+* Pathfinding via `networkx` weighted shortest paths over the hex graph.
 
 **Persistence**
 
-* Daily diffs as `msgpack` blobs; seasonal full snapshots.
-* World index and metadata in SQLite via `sqlmodel`.
+* Daily diffs as `msgpack` blobs compressed with `zstandard`; seasonal full snapshots.
+* World index and metadata in SQLite via `sqlmodel`/`sqlalchemy`.
 * Configs and schema with `pydantic`.
 
 **Interface**
@@ -158,7 +180,7 @@ survival_truck/
     hexgrid/
       __init__.py
       coords.py            # axial/cube, rings, ranges
-      path.py              # adapters to pathfinding
+      path.py              # path cost helpers / NetworkX adapters
     world/
       gen.py               # noise-based terrain, sites
       sites.py             # site types, attention params
