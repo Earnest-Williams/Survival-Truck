@@ -5,6 +5,23 @@ description = "Terminal-first survival and logistics simulation game."
 authors = ["Survival Truck Developers <devnull@example.com>"]
 readme = "README.md"
 packages = [{ include = "game" }]
+keywords = ["textual", "survival", "tui", "game"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Simulation",
+]
+
+[tool.poetry.urls]
+Repository = "https://github.com/survival-truck/Survival-Truck"
+Issues = "https://github.com/survival-truck/Survival-Truck/issues"
 
 [tool.poetry.dependencies]
 python = "^3.12"

@@ -2,41 +2,65 @@
 
 *A turn-based post-collapse survival and logistics simulation rendered as a terminal/TUI game.*
 
----
+## Overview
 
-## 1) Overview
+You drive a modular expedition truck across a persistent hex-grid world. Each day you travel, scavenge, trade, or build while NPC factions operate under the same rules. The interface is ASCII-first using a modern terminal UI powered by [Textual](https://textual.textualize.io/).
 
-You drive a modular expedition truck across a persistent hex-grid world. Each day you travel, scavenge, trade, or build. NPC factions operate under the same rules. The interface is ASCII-first using a modern terminal UI.
-
-Target runtime: **Python 3.12+**
-OS: Linux, macOS, Windows (UTF-8 terminal recommended)
-
----
+- **Target runtime:** Python 3.12+
+- **Supported platforms:** Linux, macOS, and Windows with a UTF-8 compatible terminal
 
 ## Installation
 
-This project is managed with [Poetry](https://python-poetry.org/) for reproducible environments and lockfiles.
+The repository is packaged with [Poetry](https://python-poetry.org/) to keep runtime and tooling dependencies in sync. The steps below assume you are starting with a clean checkout of this repository.
 
-1. Install Poetry (version 2.1+ recommended).
-2. Create the virtual environment and install dependencies:
+### Recommended: Poetry workflow
+
+1. Install Poetry (version 2.1 or newer). The maintainers recommend using [`pipx`](https://pipx.pypa.io/) so the tool stays isolated:
 
    ```bash
-   poetry install
+   pipx install poetry
    ```
 
-3. Launch the Textual interface from the Poetry environment:
+2. Clone the repository and create the virtual environment with all runtime and developer dependencies:
+
+   ```bash
+   git clone https://github.com/survival-truck/Survival-Truck.git
+   cd Survival-Truck
+   poetry install --with dev
+   ```
+
+3. Run the game from the managed environment:
 
    ```bash
    poetry run survival-truck
    ```
 
-4. Run the automated test suite:
+4. Execute the automated test suite (optional but recommended for contributors):
 
    ```bash
    poetry run pytest
    ```
 
-The generated `poetry.lock` file pins transitive dependencies to ensure consistent builds across machines.
+Poetry maintains the `poetry.lock` file checked into the repository so repeat installs are reproducible across machines.
+
+### Alternative: Editable install with pip
+
+If you prefer to work without Poetry you can still rely on the packaging metadata exported in `pyproject.toml`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+pip install -U pip
+pip install -e .
+
+# Launch the Textual interface
+survival-truck
+
+# Run tests
+python -m pytest
+```
+
+This flow installs the same console script entry point declared for Poetry users while letting you control your own virtual environment.
 
 ### Dependency reference
 
@@ -54,19 +78,17 @@ numpy = "^2.1.1"
 opensimplex = "^0.4.5"
 pydantic = "^2.9.2"
 esper = "^2.5"
-polars = "^1.9.0"
 msgpack = "^1.0.8"
 zstandard = "^0.23.0"
 platformdirs = "^4.3.6"
+polars = "^1.9.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
 pytest-cov = "^5.0.0"
 ```
 
----
-
-## 2) World and Game Structure
+## World and Game Structure
 
 * **Hex world:** Procedurally generated, persistent.
 * **Sites:** Cities, farms, power plants, survivor camps, military ruins.
@@ -79,9 +101,9 @@ pytest-cov = "^5.0.0"
 
 ---
 
-## 3) Python Tech Stack
+## Python Tech Stack
 
-### 3.1 Core libraries by function
+### Core libraries by function
 
 | Function                      | Library/libraries             | Why it’s used                                                   |
 | ----------------------------- | ----------------------------- | ---------------------------------------------------------------- |
@@ -102,7 +124,7 @@ pytest-cov = "^5.0.0"
 
 ---
 
-## 4) Systems Interconnection
+## Systems Interconnection
 
 **World Generation**
 
@@ -133,7 +155,7 @@ pytest-cov = "^5.0.0"
 
 ---
 
-## 5) Data Model (high level)
+## Data Model (high level)
 
 * `WorldConfig` (pydantic): seed, map size, biome weights, difficulty.
 * `Site`: id, hex, type, explored_pct, scavenged_pct, faction_id, hostility.
@@ -146,7 +168,7 @@ pytest-cov = "^5.0.0"
 
 ---
 
-## 6) Gameplay Algorithms
+## Gameplay Algorithms
 
 **Attention curve per site**
 
@@ -166,7 +188,7 @@ pytest-cov = "^5.0.0"
 
 ---
 
-## 7) Project Structure
+## Project Structure
 
 ```
 Survival-Truck/
@@ -233,23 +255,9 @@ Survival-Truck/
 
 ---
 
-## 8) Installation and Running
+## Minimal Bootstraps
 
-Using **Poetry**:
-
-```bash
-# Python 3.12+ recommended
-pipx install poetry
-
-git clone https://github.com/<you>/Survival_Truck_Py.git
-cd Survival_Truck_Py
-poetry install --with dev
-poetry run survival-truck
-```
-
-## 9) Minimal Bootstraps
-
-### 9.1 Textual app skeleton
+### Textual app skeleton
 
 ```python
 # survival_truck/app.py
@@ -284,7 +292,7 @@ if __name__ == "__main__":
     SurvivalTruckApp().run()
 ```
 
-### 9.2 Deterministic RNG and noise
+### Deterministic RNG and noise
 
 ```python
 # survival_truck/rng.py
@@ -302,7 +310,7 @@ def make_noise(seed: int | str):
     return OpenSimplex(seed)
 ```
 
-### 9.3 ECS world and a turn tick
+### ECS world and a turn tick
 
 ```python
 # survival_truck/ecs/world.py
@@ -325,7 +333,7 @@ class GameWorld:
 
 ---
 
-## 10) Balancing and Debugging
+## Balancing and Debugging
 
 * Plot attention curves and yields with `devtools/balance.py` using `matplotlib`.
 * Keep all randomness behind `rng.make_rng(seed)` for reproducibility.
@@ -333,7 +341,7 @@ class GameWorld:
 
 ---
 
-## 11) Design and Technical Pillars
+## Design and Technical Pillars
 
 **Design:** shared rules for player and NPCs; modular truck as mechanical core; persistent, deterministic world; ASCII/TUI clarity.
 
@@ -341,7 +349,7 @@ class GameWorld:
 
 ---
 
-## 12) Roadmap (first milestones)
+## Roadmap (first milestones)
 
 1. Seeded world gen: terrain, sites, factions.
 2. ECS core: movement, exploitation, maintenance.
