@@ -12,9 +12,12 @@ from game.world.persistence import (
     init_world_storage,
     iter_daily_diffs,
     load_daily_diff,
+    load_season_snapshot,
     load_world_config,
     store_daily_diff,
+    store_season_snapshot,
     store_world_config,
+    iter_season_snapshots,
 )
 from game.world.rng import WorldRandomness
 from game.world.save_models import WorldSnapshot
@@ -146,6 +149,39 @@ def test_persistence_round_trip(tmp_path: Path) -> None:
     iter_sites = iter_snapshot.to_site_map()
     assert iter_sites["beta"].identifier == "beta"
     assert iter_sites["gamma"].connections == {"beta": 3.0}
+
+
+def test_seasonal_snapshot_round_trip(tmp_path: Path) -> None:
+    engine = create_world_engine(tmp_path / "seasonal.db")
+    init_world_storage(engine)
+
+    chunk = _make_chunk()
+    site = _make_site("delta", site_type=SiteType.OUTPOST)
+    snapshot = WorldSnapshot.from_components(
+        day=30,
+        chunks=[chunk],
+        sites={site.identifier: site},
+        world_state={"season_state": "spring"},
+    )
+
+    metadata = store_season_snapshot(engine, "slot-b", snapshot, season="spring")
+    assert metadata.day == 30
+    assert "Day 30" in metadata.summary
+
+    loaded = load_season_snapshot(engine, "slot-b", 30)
+    assert loaded is not None
+    season, loaded_metadata, loaded_snapshot = loaded.season, loaded.metadata, loaded.snapshot
+    assert season == "spring"
+    assert loaded_metadata.day == 30
+    assert loaded_snapshot.day == 30
+    assert loaded_snapshot.to_site_map()[site.identifier].site_type is SiteType.OUTPOST
+
+    records = list(iter_season_snapshots(engine, "slot-b"))
+    assert len(records) == 1
+    entry = records[0]
+    assert entry.season == "spring"
+    assert entry.metadata.day == 30
+    assert entry.snapshot.to_site_map()[site.identifier].identifier == "delta"
 
 
 def test_site_generation_network_round_trip() -> None:
