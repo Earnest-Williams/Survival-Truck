@@ -65,7 +65,8 @@ class SurvivalTruckApp(App):
 
     HexMapView {
         grid-column: 1;
-        grid-row: 1 / 5;
+        grid-row: 1;
+        row-span: 4;
         height: 1fr;
     }
 

@@ -271,7 +271,7 @@ class StatusView(Static): pass
 class SurvivalTruckApp(App):
     CSS = """
     Screen { layout: grid; grid-size: 2 2; grid-gutter: 1; }
-    MapView { grid-column: 1 / 2; grid-row: 1 / 3; }
+    MapView { grid-column: 1 / 2; grid-row: 1; row-span: 2; }
     LogView { grid-column: 2; grid-row: 1; height: 1fr; }
     StatusView { grid-column: 2; grid-row: 2; height: 1fr; }
     """
