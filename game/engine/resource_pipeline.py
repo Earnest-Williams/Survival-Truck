@@ -215,15 +215,14 @@ class ResourcePipeline:
         if not adjustments:
             return
         for name in participants:
-            member = crew.members.get(name)
-            if member is None:
+            if not crew.has_member(name):
                 continue
             for key, delta in adjustments.items():
                 try:
                     need = NeedName(str(key))
                 except ValueError:
                     continue
-                member.needs[need].adjust(float(delta))
+                crew.adjust_need(name, need, float(delta))
 
     def _normalize_resource_map(self, payload: object) -> Dict[str, float]:
         if not isinstance(payload, Mapping):
