@@ -58,7 +58,7 @@ class FactionAIController:
 
         self._fsm = Machine(
             model=self,
-            states=["patrol", "trade", "raid", "alliance"],
+            states=["patrol", "trade", "raid", "consolidate", "alliance"],
             initial="patrol",
             auto_transitions=False,
         )
@@ -66,10 +66,28 @@ class FactionAIController:
             "advance_patrol", "patrol", "trade", before="_state_patrol"
         )
         self._fsm.add_transition(
+            "fallback_patrol", "trade", "patrol", before="_state_trade"
+        )
+        self._fsm.add_transition(
             "process_trade", "trade", "raid", before="_state_trade"
         )
         self._fsm.add_transition(
-            "engage_raid", "raid", "alliance", before="_state_raid"
+            "deescalate_trade", "raid", "trade", before="_state_raid"
+        )
+        self._fsm.add_transition(
+            "engage_raid", "raid", "consolidate", before="_state_raid"
+        )
+        self._fsm.add_transition(
+            "regroup_raid", "consolidate", "raid", before="_state_consolidate"
+        )
+        self._fsm.add_transition(
+            "stabilize_consolidate",
+            "consolidate",
+            "alliance",
+            before="_state_consolidate",
+        )
+        self._fsm.add_transition(
+            "cool_alliance", "alliance", "consolidate", before="_state_alliance"
         )
         self._fsm.add_transition(
             "refresh_alliance", "alliance", "patrol", before="_state_alliance"
@@ -110,6 +128,7 @@ class FactionAIController:
         self.advance_patrol()
         self.process_trade()
         self.engage_raid()
+        self.stabilize_consolidate()
         self.refresh_alliance()
 
     # ------------------------------------------------------------------
@@ -130,9 +149,30 @@ class FactionAIController:
         self._record_state("raid")
         self._resolve_conflicts(self._current_sites)
 
+    def _state_consolidate(self) -> None:
+        self._record_state("consolidate")
+        self._rebuild_after_losses()
+
     def _state_alliance(self) -> None:
         self._record_state("alliance")
         self.diplomacy.decay()
+
+    # ------------------------------------------------------------------
+    def _rebuild_after_losses(self) -> None:
+        """Spend stored wealth to offset recorded losses after raids."""
+
+        for faction in self._factions.values():
+            losses = faction.resources.get("losses", 0)
+            if losses >= 0:
+                continue
+            wealth = faction.resources.get("wealth", 0)
+            if wealth <= 0:
+                continue
+            recoverable = min(wealth // 2, abs(losses))
+            if recoverable <= 0:
+                continue
+            faction.adjust_resource("wealth", -recoverable)
+            faction.adjust_resource("losses", recoverable)
 
     # ------------------------------------------------------------------
     def _extract_sites(self, raw_sites: SiteCollectionInput | None) -> Dict[str, Site]:
