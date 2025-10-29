@@ -55,45 +55,45 @@ class SurvivalTruckApp(App):
     }
 
     #body {
-        grid-row: 2;
+        row: 2;
         layout: grid;
         grid-columns: 3fr 2fr;
-        grid-rows: min-content min-content min-content min-content 1fr;
+        grid-rows: auto auto auto auto 1fr;
         grid-gutter: 1;
         height: 1fr;
     }
 
     HexMapView {
-        grid-column: 1;
-        grid-row: 1;
+        column: 1;
+        row: 1;
         row-span: 4;
         height: 1fr;
     }
 
     #status {
-        grid-column: 2;
-        grid-row: 1;
+        column: 2;
+        row: 1;
     }
 
     #diplomacy {
-        grid-column: 2;
-        grid-row: 2;
+        column: 2;
+        row: 2;
     }
 
     #truck {
-        grid-column: 2;
-        grid-row: 3;
+        column: 2;
+        row: 3;
     }
 
     #controls {
-        grid-column: 2;
-        grid-row: 4;
+        column: 2;
+        row: 4;
     }
 
     TurnLogWidget {
-        grid-column: 1;
+        column: 1;
         column-span: 2;
-        grid-row: 5;
+        row: 5;
         height: 1fr;
     }
     """
