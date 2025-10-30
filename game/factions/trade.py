@@ -40,7 +40,8 @@ class TradeInterface:
         self.faction = faction
         self.inventory = inventory
         self._supply_catalog: Dict[str, InventoryItem] = {
-            key: value.clone(quantity=1.0) for key, value in (supply_catalog or {}).items()
+            key: value.clone(quantity=1.0)
+            for key, value in (supply_catalog or {}).items()
         }
 
     def evaluate_bundle(self, bundle: Mapping[str, float]) -> float:
@@ -124,7 +125,10 @@ class TradeInterface:
 
         catalog: Dict[str, InventoryItem] = {
             **self._supply_catalog,
-            **{key: value.clone(quantity=1.0) for key, value in (supply_overrides or {}).items()},
+            **{
+                key: value.clone(quantity=1.0)
+                for key, value in (supply_overrides or {}).items()
+            },
         }
 
         for resource, quantity in offer.requested.items():

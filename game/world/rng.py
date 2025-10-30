@@ -15,6 +15,7 @@ BitGeneratorFactory = Callable[[int], BitGenerator]
 def _default_bit_generator(seed: int) -> BitGenerator:
     return PCG64(seed)
 
+
 _BITGEN_MODULUS = 2**128
 _NOISE_MODULUS = 2**31
 
@@ -60,4 +61,3 @@ class WorldRandomness:
 
 
 __all__ = ["WorldRandomness"]
-

@@ -359,7 +359,9 @@ class FactionAIController:
                 if caravan.location in sites:
                     faction.add_known_site(caravan.location)
 
-    def _advance_caravans(self, sites: Mapping[str, Site]) -> Dict[str, List[CaravanRecord]]:
+    def _advance_caravans(
+        self, sites: Mapping[str, Site]
+    ) -> Dict[str, List[CaravanRecord]]:
         visits: Dict[str, List[CaravanRecord]] = {}
         for faction in self.ledger.iterate_factions():
             for caravan in faction.caravans.values():
@@ -386,7 +388,11 @@ class FactionAIController:
             if self._movement_graph is not None and site_id not in self._movement_graph:
                 continue
             site = sites.get(site_id)
-            if site and site.controlling_faction and site.controlling_faction in hostiles:
+            if (
+                site
+                and site.controlling_faction
+                and site.controlling_faction in hostiles
+            ):
                 continue
             viable_targets.append(site_id)
         if not viable_targets:
@@ -405,10 +411,15 @@ class FactionAIController:
     def _compute_route(self, origin: str, destination: str) -> List[str]:
         if self._movement_graph is None:
             return [origin, destination]
-        if origin not in self._movement_graph or destination not in self._movement_graph:
+        if (
+            origin not in self._movement_graph
+            or destination not in self._movement_graph
+        ):
             return [origin, destination]
         try:
-            path = shortest_path_between_sites(self._movement_graph, origin, destination)
+            path = shortest_path_between_sites(
+                self._movement_graph, origin, destination
+            )
         except nx.NetworkXNoPath:
             return [origin, destination]
         if not path:
@@ -426,7 +437,9 @@ class FactionAIController:
         next_stop = route[0]
         caravan.schedule_next_leg(self._edge_travel_time(caravan.location, next_stop))
 
-    def _handle_trade(self, visits: Mapping[str, List[CaravanRecord]], sites: Mapping[str, Site]) -> None:
+    def _handle_trade(
+        self, visits: Mapping[str, List[CaravanRecord]], sites: Mapping[str, Site]
+    ) -> None:
         for site_id, caravans in visits.items():
             site = sites.get(site_id)
             controlling = site.controlling_faction if site else None
@@ -440,11 +453,17 @@ class FactionAIController:
                 if faction is not None:
                     faction.adjust_resource("wealth", trade_value)
                 if controlling and controlling != caravan.faction_name:
-                    self.diplomacy.adjust_standing(caravan.faction_name, controlling, 2.0)
+                    self.diplomacy.adjust_standing(
+                        caravan.faction_name, controlling, 2.0
+                    )
                 elif controlling and self._diplomacy_graph is not None:
-                    allies = allied_factions(self._diplomacy_graph, caravan.faction_name)
+                    allies = allied_factions(
+                        self._diplomacy_graph, caravan.faction_name
+                    )
                     if controlling in allies:
-                        self.diplomacy.adjust_standing(caravan.faction_name, controlling, 1.0)
+                        self.diplomacy.adjust_standing(
+                            caravan.faction_name, controlling, 1.0
+                        )
                 restock_type = faction.preferred_trade_good() if faction else "supplies"
                 caravan.add_cargo(restock_type, max(1, trade_value // 2))
 
@@ -461,7 +480,9 @@ class FactionAIController:
                 continue
             self._resolve_site_conflict(caravans, hostile_pairs)
 
-    def _identify_hostile_pairs(self, caravans: Sequence[CaravanRecord]) -> List[tuple[str, str]]:
+    def _identify_hostile_pairs(
+        self, caravans: Sequence[CaravanRecord]
+    ) -> List[tuple[str, str]]:
         involved = {caravan.faction_name for caravan in caravans}
         pairs: List[tuple[str, str]] = []
         for faction_a in involved:
@@ -501,7 +522,9 @@ class FactionAIController:
     def _select_caravan_from_faction(
         self, caravans: Sequence[CaravanRecord], faction_name: str
     ) -> CaravanRecord | None:
-        candidates = [caravan for caravan in caravans if caravan.faction_name == faction_name]
+        candidates = [
+            caravan for caravan in caravans if caravan.faction_name == faction_name
+        ]
         if not candidates:
             return None
         return self.rng.choice(candidates)

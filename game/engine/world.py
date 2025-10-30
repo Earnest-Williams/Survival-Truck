@@ -6,11 +6,9 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Dict,
     List,
     Protocol,
-    Tuple,
     Type,
     TypeVar,
 )
@@ -20,6 +18,7 @@ import esper
 if hasattr(esper, "World"):
     EsperWorld = esper.World
 else:  # pragma: no cover - fallback for stripped-down esper installs
+
     class EsperWorld:
         """Minimal stand-in for :class:`esper.World` used in tests."""
 
@@ -50,6 +49,7 @@ else:  # pragma: no cover - fallback for stripped-down esper installs
                 return self._components[entity][component_type]  # type: ignore[return-value]
             except KeyError as exc:  # pragma: no cover - defensive branch
                 raise KeyError(component_type) from exc
+
 
 from ..crew import Crew
 from ..factions import FactionAIController
@@ -158,7 +158,9 @@ class GameWorld:
 
         for entries in self._systems.values():
             for entry in entries:
-                if isinstance(getattr(entry.callback, "__self__", entry.callback), system_type):
+                if isinstance(
+                    getattr(entry.callback, "__self__", entry.callback), system_type
+                ):
                     return True
                 if isinstance(entry.callback, system_type):
                     return True
@@ -182,7 +184,9 @@ class GameWorld:
             raise TypeError("system must be callable or expose a process() method")
 
         self._system_counter += 1
-        entry = _SystemEntry(priority=priority, order=self._system_counter, callback=callback)
+        entry = _SystemEntry(
+            priority=priority, order=self._system_counter, callback=callback
+        )
         phase_systems = self._systems.setdefault(phase, [])
         phase_systems.append(entry)
         phase_systems.sort(key=lambda item: (item.priority, item.order))
@@ -204,7 +208,9 @@ class GameWorld:
 class TruckMaintenanceSystem:
     """Apply daily maintenance actions to the truck component."""
 
-    def process(self, world: GameWorld, context: "TurnContext") -> None:  # pragma: no cover - runtime behaviour
+    def process(
+        self, world: GameWorld, context: "TurnContext"
+    ) -> None:  # pragma: no cover - runtime behaviour
         truck_component = world.get_singleton(TruckComponent)
         if truck_component is None:
             return
@@ -227,7 +233,9 @@ class CrewAdvancementSystem:
     def __init__(self, *, decay_modifier: float = 1.0) -> None:
         self.decay_modifier = decay_modifier
 
-    def process(self, world: GameWorld, context: "TurnContext") -> None:  # pragma: no cover - runtime behaviour
+    def process(
+        self, world: GameWorld, context: "TurnContext"
+    ) -> None:  # pragma: no cover - runtime behaviour
         crew_component = world.get_singleton(CrewComponent)
         if crew_component is None:
             return
@@ -237,17 +245,23 @@ class CrewAdvancementSystem:
 class FactionAISystem:
     """Delegate faction behaviour to the registered AI controller."""
 
-    def process(self, world: GameWorld, context: "TurnContext") -> None:  # pragma: no cover - runtime behaviour
+    def process(
+        self, world: GameWorld, context: "TurnContext"
+    ) -> None:  # pragma: no cover - runtime behaviour
         faction_component = world.get_singleton(FactionControllerComponent)
         if faction_component is None:
             return
-        faction_component.controller.run_turn(world_state=context.world_state, day=context.day)
+        faction_component.controller.run_turn(
+            world_state=context.world_state, day=context.day
+        )
 
 
 class DiplomacySystem:
     """Apply global diplomacy updates separate from faction AI turns."""
 
-    def process(self, world: GameWorld, context: "TurnContext") -> None:  # pragma: no cover - runtime behaviour
+    def process(
+        self, world: GameWorld, context: "TurnContext"
+    ) -> None:  # pragma: no cover - runtime behaviour
         faction_component = world.get_singleton(FactionControllerComponent)
         if faction_component is None:
             return

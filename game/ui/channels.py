@@ -50,13 +50,21 @@ class TurnLogChannel:
         if len(self._entries) > self.max_entries:
             self._entries = self._entries[-self.max_entries :]
 
-    def record_context(self, context: "TurnContext", *, summary: str | None = None) -> LogEntry:
+    def record_context(
+        self, context: "TurnContext", *, summary: str | None = None
+    ) -> LogEntry:
         """Create a log entry from the provided turn context."""
 
         summary_text = summary or _build_default_summary(context)
-        highlights = list(context.summary_lines) if getattr(context, "summary_lines", None) else []
+        highlights = (
+            list(context.summary_lines)
+            if getattr(context, "summary_lines", None)
+            else []
+        )
         events = [_format_event_line(event) for event in context.events]
-        scheduled = [_format_scheduled_line(event) for event in context.scheduled_events]
+        scheduled = [
+            _format_scheduled_line(event) for event in context.scheduled_events
+        ]
         entry = LogEntry(
             day=context.day,
             summary=summary_text,
@@ -114,14 +122,18 @@ class NotificationChannel:
         category: str = "info",
         payload: Mapping[str, Any] | None = None,
     ) -> NotificationRecord:
-        record = NotificationRecord(day=day, message=message, category=category, payload=dict(payload or {}))
+        record = NotificationRecord(
+            day=day, message=message, category=category, payload=dict(payload or {})
+        )
         self.push(record)
         return record
 
     def extend_from_events(self, day: int, events: Iterable[QueuedEvent]) -> None:
         for event in events:
             payload = dict(event.payload)
-            message = str(payload.pop("message", event.event_type.replace("_", " ").title()))
+            message = str(
+                payload.pop("message", event.event_type.replace("_", " ").title())
+            )
             payload.setdefault("event_type", event.event_type)
             payload.setdefault("scheduled_for", event.day)
             self.push(

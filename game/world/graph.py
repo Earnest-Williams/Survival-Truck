@@ -31,7 +31,9 @@ def build_site_movement_graph(
     cost_fn = _resolve_cost_function(terrain_costs, default_cost)
 
     if connections is None:
-        for (site_a, coord_a), (site_b, coord_b) in combinations(site_positions.items(), 2):
+        for (site_a, coord_a), (site_b, coord_b) in combinations(
+            site_positions.items(), 2
+        ):
             if coord_a.distance_to(coord_b) != 1:
                 continue
             _add_edge_with_cost(graph, site_a, coord_a, site_b, coord_b, cost_fn)
@@ -45,11 +47,15 @@ def build_site_movement_graph(
             if neighbor not in site_positions:
                 continue
             coord_neighbor = site_positions[neighbor]
-            _add_edge_with_cost(graph, origin, coord_origin, neighbor, coord_neighbor, cost_fn)
+            _add_edge_with_cost(
+                graph, origin, coord_origin, neighbor, coord_neighbor, cost_fn
+            )
     return graph
 
 
-def shortest_path_between_sites(graph: nx.Graph, start: str, goal: str) -> Sequence[str]:
+def shortest_path_between_sites(
+    graph: nx.Graph, start: str, goal: str
+) -> Sequence[str]:
     """Return the lowest-cost path between ``start`` and ``goal`` using A* search."""
 
     if start == goal:
@@ -109,7 +115,9 @@ def relationship(
     return float(default)
 
 
-def allied_factions(graph: nx.Graph, faction: str, threshold: float = 15.0) -> list[str]:
+def allied_factions(
+    graph: nx.Graph, faction: str, threshold: float = 15.0
+) -> list[str]:
     """Return factions considered allied to ``faction`` according to ``threshold``."""
 
     allies: list[str] = []
@@ -123,7 +131,9 @@ def allied_factions(graph: nx.Graph, faction: str, threshold: float = 15.0) -> l
     return allies
 
 
-def hostile_factions(graph: nx.Graph, faction: str, threshold: float = -15.0) -> list[str]:
+def hostile_factions(
+    graph: nx.Graph, faction: str, threshold: float = -15.0
+) -> list[str]:
     """Return factions considered hostile to ``faction`` according to ``threshold``."""
 
     hostiles: list[str] = []
@@ -227,7 +237,11 @@ def _cube_lerp(
     b: tuple[float, float, float],
     t: float,
 ) -> tuple[float, float, float]:
-    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+    return (
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    )
 
 
 def _cube_round(cube: tuple[float, float, float]) -> tuple[int, int, int]:

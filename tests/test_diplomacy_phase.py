@@ -33,7 +33,9 @@ class _RecordingController:
 def test_turn_engine_runs_diplomacy_phase_before_faction() -> None:
     queue = EventQueue()
     tracker = SeasonTracker(days_per_season=10)
-    clear = WeatherCondition("clear", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0)
+    clear = WeatherCondition(
+        "clear", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0
+    )
     weather_system = WeatherSystem(
         seasonal_tables={tracker.current_season.name: ((clear, 1.0),)},
         starting_day=tracker.current_day,

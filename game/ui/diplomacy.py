@@ -37,7 +37,9 @@ class DiplomacyView(Widget):
         self._snapshot = DiplomacySnapshot(factions={}, graph=None)
 
     # ------------------------------------------------------------------
-    def update_snapshot(self, factions: Mapping[str, FactionRecord], graph: nx.Graph | None) -> None:
+    def update_snapshot(
+        self, factions: Mapping[str, FactionRecord], graph: nx.Graph | None
+    ) -> None:
         """Store the latest diplomacy state and refresh the widget."""
 
         self._snapshot = DiplomacySnapshot(factions=dict(factions), graph=graph)
@@ -53,13 +55,23 @@ class DiplomacyView(Widget):
         graph = self._snapshot.graph
 
         if not factions:
-            return Panel("No faction data available", title=self.title, border_style=self.border_style)
+            return Panel(
+                "No faction data available",
+                title=self.title,
+                border_style=self.border_style,
+            )
 
         if graph is None or graph.number_of_nodes() == 0:
-            return Panel("Diplomacy records pending", title=self.title, border_style=self.border_style)
+            return Panel(
+                "Diplomacy records pending",
+                title=self.title,
+                border_style=self.border_style,
+            )
 
         standings_table = Table.grid(padding=(0, 1), expand=True)
-        standings_table.add_row("[bold]Faction A[/bold]", "[bold]Faction B[/bold]", "[bold]Standing[/bold]")
+        standings_table.add_row(
+            "[bold]Faction A[/bold]", "[bold]Faction B[/bold]", "[bold]Standing[/bold]"
+        )
 
         edges = sorted(
             (
@@ -82,7 +94,9 @@ class DiplomacyView(Widget):
 
         alliance_rows = 0
         for faction in sorted(graph.nodes):
-            allies = sorted(allied_factions(graph, faction, threshold=self.alliance_threshold))
+            allies = sorted(
+                allied_factions(graph, faction, threshold=self.alliance_threshold)
+            )
             if not allies:
                 continue
             alliance_rows += 1

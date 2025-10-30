@@ -105,7 +105,9 @@ class HexMapView(Widget):
         super().__init__(id="map")
         self.terrain_symbols: Dict[str, str] = dict(self.DEFAULT_TERRAIN_SYMBOLS)
         if terrain_symbols:
-            self.terrain_symbols.update({str(key): str(value) for key, value in terrain_symbols.items()})
+            self.terrain_symbols.update(
+                {str(key): str(value) for key, value in terrain_symbols.items()}
+            )
         self.unknown_symbol = unknown_symbol
         self.title = title
         self._highlights: MutableMapping[Coordinate, str] = {}
@@ -122,7 +124,9 @@ class HexMapView(Widget):
         self.refresh()
 
     def set_highlights(self, highlights: Mapping[Coordinate, str]) -> None:
-        self._highlights = {(int(r), int(c)): str(text) for (r, c), text in highlights.items()}
+        self._highlights = {
+            (int(r), int(c)): str(text) for (r, c), text in highlights.items()
+        }
         self.refresh()
 
     def move_cursor(self, row_delta: int, col_delta: int) -> None:
@@ -154,8 +158,14 @@ class HexMapView(Widget):
         if not self._grid:
             return
         row, col = self.cursor
-        terrain = self._grid[row][col] if row < len(self._grid) and col < len(self._grid[row]) else "?"
-        self.post_message(self.CoordinateSelected(self, MapSelection((row, col), terrain)))
+        terrain = (
+            self._grid[row][col]
+            if row < len(self._grid) and col < len(self._grid[row])
+            else "?"
+        )
+        self.post_message(
+            self.CoordinateSelected(self, MapSelection((row, col), terrain))
+        )
 
     def _announce_selection(self) -> None:
         if not self._grid:
@@ -164,7 +174,9 @@ class HexMapView(Widget):
         if row >= len(self._grid) or col >= len(self._grid[row]):
             return
         terrain = self._grid[row][col]
-        self.post_message(self.CoordinateSelected(self, MapSelection((row, col), terrain)))
+        self.post_message(
+            self.CoordinateSelected(self, MapSelection((row, col), terrain))
+        )
 
     def render(self):  # type: ignore[override]
         highlight_map: Dict[Coordinate, str] = dict(self._highlights)
@@ -174,9 +186,17 @@ class HexMapView(Widget):
                 terrain = self._grid[row][col]
                 symbol = self.terrain_symbols.get(str(terrain))
                 if symbol is None:
-                    symbol = str(terrain)[:2].title() if terrain else self.unknown_symbol
+                    symbol = (
+                        str(terrain)[:2].title() if terrain else self.unknown_symbol
+                    )
                 highlight_map[(row, col)] = f"[reverse]{symbol}[/reverse]"
-        return _render_hex_map(self._grid, self.terrain_symbols, self.unknown_symbol, self.title, highlight_map)
+        return _render_hex_map(
+            self._grid,
+            self.terrain_symbols,
+            self.unknown_symbol,
+            self.title,
+            highlight_map,
+        )
 
 
 __all__ = ["HexMapView", "Coordinate", "MapSelection"]

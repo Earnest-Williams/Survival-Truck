@@ -139,7 +139,9 @@ class SettlementManager:
             return self._settlements[site.settlement_id]
 
         self._counter += 1
-        identifier = site.settlement_id or f"{site.identifier}-settlement-{self._counter}"
+        identifier = (
+            site.settlement_id or f"{site.identifier}-settlement-{self._counter}"
+        )
         name = base_name or f"{site.identifier.title()} Haven"
         if initial_population is not None:
             population = initial_population

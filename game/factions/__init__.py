@@ -78,7 +78,9 @@ class FactionDiplomacy:
 
         from ..world.graph import build_diplomacy_graph
 
-        return build_diplomacy_graph(factions, self._relations, neutral_value=self.neutral_value)
+        return build_diplomacy_graph(
+            factions, self._relations, neutral_value=self.neutral_value
+        )
 
 
 from .ai import FactionAIController

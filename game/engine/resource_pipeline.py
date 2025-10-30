@@ -13,7 +13,6 @@ from ..truck import (
     Inventory,
     InventoryItem,
     ItemCategory,
-    Truck,
 )
 from ..world.stateframes import SiteStateFrame
 from .world import CrewComponent, SitesComponent, TruckComponent
@@ -60,7 +59,9 @@ class ResourcePipeline:
         if not isinstance(actions, Iterable):
             return
 
-        log: List[ResourceLogEntry] = context.world_state.setdefault("resource_events", [])
+        log: List[ResourceLogEntry] = context.world_state.setdefault(
+            "resource_events", []
+        )
 
         spoiled = list(inventory.advance_time())
         if spoiled:
@@ -121,15 +122,15 @@ class ResourcePipeline:
 
         sites_component = context.world.get_singleton(SitesComponent)
         site_state = (
-            sites_component.sites
-            if sites_component is not None
-            else SiteStateFrame()
+            sites_component.sites if sites_component is not None else SiteStateFrame()
         )
         orders = context.command.get("site_exploitation", [])
         if not isinstance(orders, Iterable):
             return
 
-        log: List[ResourceLogEntry] = context.world_state.setdefault("resource_events", [])
+        log: List[ResourceLogEntry] = context.world_state.setdefault(
+            "resource_events", []
+        )
 
         for raw_order in orders:
             if not isinstance(raw_order, Mapping):
@@ -149,7 +150,9 @@ class ResourcePipeline:
                 progress = site_state.apply_scavenge_result(site_key, result)
                 yield_key = str(raw_order.get("resource", "scavenged_goods"))
                 base_amount = max(1.0, progress / 5.0)
-                produced.update(self._apply_production(inventory, {yield_key: base_amount}))
+                produced.update(
+                    self._apply_production(inventory, {yield_key: base_amount})
+                )
                 notes["progress"] = progress
 
             explicit_production = self._normalize_resource_map(raw_order.get("produce"))
@@ -247,5 +250,6 @@ class ResourcePipeline:
         if isinstance(payload, Sequence):
             return [str(entry) for entry in payload]
         return []
+
 
 __all__ = ["ResourceLogEntry", "ResourcePipeline"]

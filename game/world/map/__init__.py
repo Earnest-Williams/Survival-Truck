@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, ClassVar, Dict, Iterator, Mapping, MutableMapping, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    Tuple,
+)
 
 from opensimplex import OpenSimplex
 
@@ -125,7 +134,9 @@ class BiomeNoise:
         self._frequency = frequency
 
     def value(self, coord: HexCoord) -> float:
-        sample = self._noise.noise2(coord.q * self._frequency, coord.r * self._frequency)
+        sample = self._noise.noise2(
+            coord.q * self._frequency, coord.r * self._frequency
+        )
         return 0.5 + 0.5 * sample
 
     def biome(self, coord: HexCoord) -> BiomeType:
@@ -215,7 +226,8 @@ class SiteNetwork:
             for identifier, coord in self.positions.items()
         }
         connection_payload = {
-            identifier: dict(neighbours) for identifier, neighbours in self.connections.items()
+            identifier: dict(neighbours)
+            for identifier, neighbours in self.connections.items()
         }
         return {
             "sites": self.sites,
@@ -261,7 +273,9 @@ def generate_site_network(
         positions[identifier] = coord
         occupied.add(key)
     if len(positions) < site_count:
-        raise RuntimeError("failed to place the requested number of sites within radius")
+        raise RuntimeError(
+            "failed to place the requested number of sites within radius"
+        )
 
     from ..sites import AttentionCurve, Site, SiteType
 
@@ -319,7 +333,9 @@ def generate_site_network(
             attention_curve=curve,
         )
 
-    connections: Dict[str, Dict[str, float]] = {identifier: {} for identifier in positions}
+    connections: Dict[str, Dict[str, float]] = {
+        identifier: {} for identifier in positions
+    }
     for identifier, origin in positions.items():
         neighbours = [
             (other_id, origin.distance_to(target))
@@ -339,10 +355,13 @@ def generate_site_network(
             site.connect(neighbour_id, cost=cost)
 
     ordered_connections = {
-        identifier: dict(sorted(neighbours.items())) for identifier, neighbours in connections.items()
+        identifier: dict(sorted(neighbours.items()))
+        for identifier, neighbours in connections.items()
     }
 
-    return SiteNetwork(sites=sites, positions=positions, connections=ordered_connections)
+    return SiteNetwork(
+        sites=sites, positions=positions, connections=ordered_connections
+    )
 
 
 __all__ = [

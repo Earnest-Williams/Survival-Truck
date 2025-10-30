@@ -21,7 +21,9 @@ def _build_stats_panel(stats: Mapping[str, str]):
     return Panel(table, title="Campaign Stats", border_style="blue")
 
 
-def _placeholder_panel(title: str, message: str, *, border_style: str = "blue") -> RenderableType:
+def _placeholder_panel(
+    title: str, message: str, *, border_style: str = "blue"
+) -> RenderableType:
     from rich.panel import Panel
 
     return Panel(message, title=title, border_style=border_style)
@@ -45,7 +47,9 @@ class DashboardView(Widget):
         self.title = title
         self._focus_detail: str | None = None
         self.notification_channel = notification_channel or NotificationChannel()
-        self._stats: Dict[str, str] = {str(key): str(value) for key, value in (stats or {}).items()}
+        self._stats: Dict[str, str] = {
+            str(key): str(value) for key, value in (stats or {}).items()
+        }
 
     def update_stats(self, stats: Mapping[str, str]) -> None:
         self._stats = {str(key): str(value) for key, value in stats.items()}
@@ -70,8 +74,10 @@ class DashboardView(Widget):
 
         layout = Layout(name="status")
         stats_mapping: Mapping[str, str] = self._stats
-        stats_panel = _build_stats_panel(stats_mapping) if stats_mapping else _placeholder_panel(
-            "Campaign Stats", "No statistics available"
+        stats_panel = (
+            _build_stats_panel(stats_mapping)
+            if stats_mapping
+            else _placeholder_panel("Campaign Stats", "No statistics available")
         )
         notifications = self.notification_channel.render_panel(title="Notifications")
         layout.split_column(

@@ -23,4 +23,6 @@ def test_pyproject_declares_expected_metadata() -> None:
 
     dependencies = poetry["dependencies"]
     for dependency in ("textual", "networkx", "sqlmodel"):
-        assert dependency in dependencies, f"missing dependency declaration for {dependency}"
+        assert dependency in dependencies, (
+            f"missing dependency declaration for {dependency}"
+        )

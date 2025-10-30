@@ -22,6 +22,7 @@ from .graph import (
     shortest_path_between_sites,
 )
 from .rng import WorldRandomness
+
 if TYPE_CHECKING:  # pragma: no cover - imported for type checkers only
     from .sites import AttentionCurve, Site, SiteType
     from .save_models import WorldSnapshot, WorldSnapshotMetadata

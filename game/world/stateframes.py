@@ -129,7 +129,9 @@ class SiteStateFrame:
 
     # ------------------------------------------------------------------
     def clone(self) -> "SiteStateFrame":
-        return SiteStateFrame(sites=self._sites.clone(), connections=self._connections.clone())
+        return SiteStateFrame(
+            sites=self._sites.clone(), connections=self._connections.clone()
+        )
 
     @property
     def sites(self) -> pl.DataFrame:
@@ -171,7 +173,9 @@ class SiteStateFrame:
         )
         connections = {
             target: float(cost)
-            for target, cost in zip(neighbours.get("target", []), neighbours.get("cost", []))
+            for target, cost in zip(
+                neighbours.get("target", []), neighbours.get("cost", [])
+            )
         }
         return Site(
             identifier=row[self._sites.columns.index("identifier")],
@@ -207,7 +211,9 @@ class SiteStateFrame:
             )
             connections = {
                 target: float(cost)
-                for target, cost in zip(neighbours.get("target", []), neighbours.get("cost", []))
+                for target, cost in zip(
+                    neighbours.get("target", []), neighbours.get("cost", [])
+                )
             }
             payload[row["identifier"]] = Site(
                 identifier=row["identifier"],
@@ -224,14 +230,19 @@ class SiteStateFrame:
         return payload
 
     # ------------------------------------------------------------------
-    def _update_site(self, identifier: str, values: MutableMapping[str, object]) -> None:
+    def _update_site(
+        self, identifier: str, values: MutableMapping[str, object]
+    ) -> None:
         if not values:
             return
         mask = pl.col("identifier") == identifier
         updates = []
         for column, value in values.items():
             updates.append(
-                pl.when(mask).then(pl.lit(value, dtype=self._sites.schema[column])).otherwise(pl.col(column)).alias(column)
+                pl.when(mask)
+                .then(pl.lit(value, dtype=self._sites.schema[column]))
+                .otherwise(pl.col(column))
+                .alias(column)
             )
         self._sites = self._sites.with_columns(updates)
 
@@ -279,9 +290,13 @@ class SiteStateFrame:
         self._update_site(identifier, updates)
         return progress
 
-    def apply_negotiation_result(self, identifier: str, result: SkillCheckResult, faction: str) -> float:
+    def apply_negotiation_result(
+        self, identifier: str, result: SkillCheckResult, faction: str
+    ) -> float:
         if result.skill != SkillType.NEGOTIATION:
-            raise ValueError("apply_negotiation_result requires a negotiation skill result")
+            raise ValueError(
+                "apply_negotiation_result requires a negotiation skill result"
+            )
         site_match = self._sites.filter(pl.col("identifier") == identifier)
         if site_match.is_empty():
             return 0.0

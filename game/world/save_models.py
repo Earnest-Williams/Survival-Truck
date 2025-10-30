@@ -68,7 +68,9 @@ class HexPointModel(BaseModel):
     def _coerce_tuple(cls, value: object) -> Mapping[str, object] | object:
         if isinstance(value, Mapping):
             return value
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
             sequence = list(value)
             if len(sequence) >= 2:
                 return {"q": int(sequence[0]), "r": int(sequence[1])}
@@ -138,7 +140,9 @@ class ResourceLogEntryModel(BaseModel):
         if value in (None, {}):
             return {}
         if not isinstance(value, Mapping):
-            raise TypeError("resource map must be a mapping of resource ids to quantities")
+            raise TypeError(
+                "resource map must be a mapping of resource ids to quantities"
+            )
         normalised: Dict[str, float] = {}
         for key, amount in value.items():
             normalised[str(key)] = float(amount)
@@ -151,7 +155,9 @@ class ResourceLogEntryModel(BaseModel):
             return {}
         if not isinstance(value, Mapping):
             coerced = _coerce_json(value)
-            return {} if coerced is _DROP or not isinstance(coerced, Mapping) else coerced
+            return (
+                {} if coerced is _DROP or not isinstance(coerced, Mapping) else coerced
+            )
         result: Dict[str, object] = {}
         for key, entry in value.items():
             coerced = _coerce_json(entry)
@@ -211,7 +217,9 @@ class WorldStatePayload(BaseModel):
     def _normalise_notes(cls, value: object) -> List[str]:
         if value in (None, []):
             return []
-        if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        if not isinstance(value, Sequence) or isinstance(
+            value, (str, bytes, bytearray)
+        ):
             return [str(value)]
         return [str(entry) for entry in value]
 
@@ -227,12 +235,16 @@ class WorldStatePayload(BaseModel):
             normalised[str(key)] = float(amount)
         return normalised
 
-    @field_validator("planned_route", "module_orders", "crew_assignments", mode="before")
+    @field_validator(
+        "planned_route", "module_orders", "crew_assignments", mode="before"
+    )
     @classmethod
     def _normalise_strings(cls, value: object) -> List[str]:
         if value in (None, []):
             return []
-        if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        if not isinstance(value, Sequence) or isinstance(
+            value, (str, bytes, bytearray)
+        ):
             return [str(value)]
         return [str(entry) for entry in value]
 
@@ -326,7 +338,9 @@ class ChunkSnapshot(BaseModel):
             ChunkTileModel(local_q=q, local_r=r, biome=biome)
             for (q, r), biome in sorted(chunk.biomes.items())
         ]
-        return cls(q=chunk.coord.q, r=chunk.coord.r, chunk_size=chunk.chunk_size, tiles=tiles)
+        return cls(
+            q=chunk.coord.q, r=chunk.coord.r, chunk_size=chunk.chunk_size, tiles=tiles
+        )
 
     def to_chunk(self) -> MapChunk:
         coord = ChunkCoord(self.q, self.r)
@@ -455,10 +469,14 @@ class WorldSnapshot(BaseModel):
                         filtered[key] = value
                 site_map = filtered
         chunk_models = [ChunkSnapshot.from_chunk(chunk) for chunk in chunks]
-        site_models = [SiteSnapshot.from_site(site) for _, site in sorted(site_map.items())]
+        site_models = [
+            SiteSnapshot.from_site(site) for _, site in sorted(site_map.items())
+        ]
         payload = WorldStatePayload.from_mapping(world_state)
         sanitized_state = payload.to_serializable_dict()
-        return cls(day=day, chunks=chunk_models, sites=site_models, world_state=sanitized_state)
+        return cls(
+            day=day, chunks=chunk_models, sites=site_models, world_state=sanitized_state
+        )
 
     def to_chunks(self) -> List[MapChunk]:
         return [chunk.to_chunk() for chunk in self.chunks]
@@ -472,8 +490,12 @@ class WorldSnapshot(BaseModel):
         state["sites"] = SiteStateFrame.from_sites(self.to_site_map())
         return state
 
-    def metadata(self, *, summary: str | None = None, created_at: datetime | None = None) -> "WorldSnapshotMetadata":
-        return WorldSnapshotMetadata.from_snapshot(self, summary=summary, created_at=created_at)
+    def metadata(
+        self, *, summary: str | None = None, created_at: datetime | None = None
+    ) -> "WorldSnapshotMetadata":
+        return WorldSnapshotMetadata.from_snapshot(
+            self, summary=summary, created_at=created_at
+        )
 
 
 class WorldSnapshotMetadata(BaseModel):

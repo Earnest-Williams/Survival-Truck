@@ -1,0 +1,8 @@
+# Mamba/Conda environment specification for 'Survival-Truck'
+# Edit me to add your project's dependencies!
+name: Survival-Truck
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip

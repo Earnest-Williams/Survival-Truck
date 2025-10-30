@@ -24,7 +24,10 @@ class WeatherSystem:
     def __init__(
         self,
         *,
-        seasonal_tables: Mapping[str, Sequence[WeatherCondition | Tuple[WeatherCondition, float]]] | None = None,
+        seasonal_tables: Mapping[
+            str, Sequence[WeatherCondition | Tuple[WeatherCondition, float]]
+        ]
+        | None = None,
         rng: Generator | None = None,
         starting_day: int = 0,
         starting_season: str | None = None,
@@ -54,10 +57,18 @@ class WeatherSystem:
     # ------------------------------------------------------------------
     @staticmethod
     def _default_tables() -> Mapping[str, Sequence[Tuple[WeatherCondition, float]]]:
-        clear = WeatherCondition("clear", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0)
-        rain = WeatherCondition("rain", travel_cost_multiplier=1.1, maintenance_cost_multiplier=1.05)
-        storm = WeatherCondition("storm", travel_cost_multiplier=1.25, maintenance_cost_multiplier=1.2)
-        snow = WeatherCondition("snow", travel_cost_multiplier=1.35, maintenance_cost_multiplier=1.3)
+        clear = WeatherCondition(
+            "clear", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0
+        )
+        rain = WeatherCondition(
+            "rain", travel_cost_multiplier=1.1, maintenance_cost_multiplier=1.05
+        )
+        storm = WeatherCondition(
+            "storm", travel_cost_multiplier=1.25, maintenance_cost_multiplier=1.2
+        )
+        snow = WeatherCondition(
+            "snow", travel_cost_multiplier=1.35, maintenance_cost_multiplier=1.3
+        )
 
         return {
             "default": ((clear, 1.0),),
@@ -80,7 +91,9 @@ class WeatherSystem:
                 continue
             normalized.append((condition, float(weight)))
         if not normalized:
-            raise ValueError("weather table must contain at least one positive-weight condition")
+            raise ValueError(
+                "weather table must contain at least one positive-weight condition"
+            )
         return normalized
 
     def _resolve_table_key(self, season: str | None) -> str:
@@ -150,4 +163,3 @@ class WeatherSystem:
 
 
 __all__ = ["WeatherCondition", "WeatherSystem"]
-

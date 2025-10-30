@@ -101,7 +101,11 @@ class ControlPanel:
         from rich.table import Table
 
         table = Table.grid(padding=(0, 1), expand=True)
-        route = " -> ".join(self._route_waypoints) if self._route_waypoints else "(no route)"
+        route = (
+            " -> ".join(self._route_waypoints)
+            if self._route_waypoints
+            else "(no route)"
+        )
         table.add_row("[bold]Route[/bold]", route)
 
         if self._module_orders:
@@ -139,7 +143,9 @@ class ControlPanelWidget(Widget):
         def __init__(self) -> None:
             super().__init__()
 
-    def __init__(self, panel: ControlPanel | None = None, *, title: str | None = None) -> None:
+    def __init__(
+        self, panel: ControlPanel | None = None, *, title: str | None = None
+    ) -> None:
         super().__init__(id="controls")
         self.control_panel = panel or ControlPanel()
         self.title = title

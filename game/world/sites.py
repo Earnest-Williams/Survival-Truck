@@ -167,7 +167,9 @@ class Site:
                 self.risk_curve = RiskCurve()  # type: ignore[assignment]
         if self.settlement_id is not None and not isinstance(self.settlement_id, str):
             raise TypeError("settlement_id must be a string or None")
-        self.connections = self._normalise_connections(self.identifier, self.connections)
+        self.connections = self._normalise_connections(
+            self.identifier, self.connections
+        )
 
     @staticmethod
     def _clamp_percentage(value: float) -> float:
@@ -178,7 +180,9 @@ class Site:
     def record_exploration(self, amount: float) -> None:
         """Increase the exploration percentage by ``amount``."""
 
-        self.exploration_percent = self._clamp_percentage(self.exploration_percent + amount)
+        self.exploration_percent = self._clamp_percentage(
+            self.exploration_percent + amount
+        )
 
     def record_scavenge(self, amount: float) -> None:
         """Increase the scavenged percentage by ``amount``."""
@@ -210,7 +214,11 @@ class Site:
             attention_curve = attention_payload
         elif isinstance(attention_payload, dict):
             attention_curve = AttentionCurve.from_dict(
-                {key: float(value) for key, value in attention_payload.items() if isinstance(key, str)}
+                {
+                    key: float(value)
+                    for key, value in attention_payload.items()
+                    if isinstance(key, str)
+                }
             )
         else:
             attention_curve = AttentionCurve()
@@ -296,7 +304,9 @@ class Site:
         """
 
         if result.skill != SkillType.SCAVENGING:
-            raise ValueError("resolve_scavenge_attempt requires a scavenging skill result")
+            raise ValueError(
+                "resolve_scavenge_attempt requires a scavenging skill result"
+            )
         base_progress = max(0.5, 4.0 + result.margin)
         intensity = max(0.05, self.attention_curve.value_at(self.scavenged_percent))
         progress = base_progress * intensity
@@ -308,14 +318,18 @@ class Site:
             self.population = max(0, self.population + morale_boost)
         return progress
 
-    def resolve_negotiation_attempt(self, result: SkillCheckResult, faction: str) -> float:
+    def resolve_negotiation_attempt(
+        self, result: SkillCheckResult, faction: str
+    ) -> float:
         """Apply the outcome of a negotiation attempt.
 
         Returns the change applied to the site's attention base.
         """
 
         if result.skill != SkillType.NEGOTIATION:
-            raise ValueError("resolve_negotiation_attempt requires a negotiation skill result")
+            raise ValueError(
+                "resolve_negotiation_attempt requires a negotiation skill result"
+            )
         sway = max(-5.0, min(5.0, result.margin / 2))
         curve = self.attention_curve
         influence = max(0.0, curve.value_at(self.exploration_percent))

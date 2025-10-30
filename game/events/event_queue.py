@@ -24,7 +24,9 @@ class EventQueue:
         self._heap: List[Tuple[int, int, QueuedEvent]] = []
         self._counter = count()
 
-    def schedule(self, day: int, event_type: str, payload: Dict[str, Any] | None = None) -> None:
+    def schedule(
+        self, day: int, event_type: str, payload: Dict[str, Any] | None = None
+    ) -> None:
         """Schedule an event to fire on the provided day."""
 
         if day < 0:
@@ -32,7 +34,13 @@ class EventQueue:
         event = QueuedEvent(day=day, event_type=event_type, payload=payload or {})
         heapq.heappush(self._heap, (day, next(self._counter), event))
 
-    def schedule_in(self, days_from_now: int, current_day: int, event_type: str, payload: Dict[str, Any] | None = None) -> None:
+    def schedule_in(
+        self,
+        days_from_now: int,
+        current_day: int,
+        event_type: str,
+        payload: Dict[str, Any] | None = None,
+    ) -> None:
         """Convenience helper to schedule relative to the current day."""
 
         if days_from_now < 0:
@@ -68,4 +76,3 @@ class EventQueue:
     def clear(self) -> None:
         self._heap.clear()
         self._counter = count()
-

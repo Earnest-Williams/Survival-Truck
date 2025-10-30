@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Iterable, Iterator, Mapping, MutableMapping
+from typing import Dict, Iterable, Iterator, Mapping
 
 
 class InventoryCapacityError(ValueError):
@@ -58,7 +58,9 @@ class SpoilageState:
     def fresh(duration_days: float) -> "SpoilageState":
         if duration_days <= 0:
             return SpoilageState(total_days=float(duration_days), remaining_days=0.0)
-        return SpoilageState(total_days=float(duration_days), remaining_days=float(duration_days))
+        return SpoilageState(
+            total_days=float(duration_days), remaining_days=float(duration_days)
+        )
 
     def advance(self, days: float) -> bool:
         """Advance spoilage and return ``True`` if state changed."""
@@ -76,7 +78,9 @@ class SpoilageState:
         return self.remaining_days <= 0.0
 
     def copy(self) -> "SpoilageState":
-        return SpoilageState(total_days=self.total_days, remaining_days=self.remaining_days)
+        return SpoilageState(
+            total_days=self.total_days, remaining_days=self.remaining_days
+        )
 
 
 @dataclass
@@ -171,10 +175,17 @@ class Inventory:
             if max_volume < 0:
                 raise ValueError("max_volume cannot be negative")
             self.max_volume = float(max_volume)
-        if self.total_weight > self.max_weight + 1e-6 or self.total_volume > self.max_volume + 1e-6:
-            raise InventoryCapacityError("Existing cargo exceeds the new capacity limits")
+        if (
+            self.total_weight > self.max_weight + 1e-6
+            or self.total_volume > self.max_volume + 1e-6
+        ):
+            raise InventoryCapacityError(
+                "Existing cargo exceeds the new capacity limits"
+            )
 
-    def _ensure_capacity(self, *, additional_weight: float, additional_volume: float) -> None:
+    def _ensure_capacity(
+        self, *, additional_weight: float, additional_volume: float
+    ) -> None:
         new_weight = self.total_weight + additional_weight
         if new_weight > self.max_weight + 1e-6:
             raise InventoryCapacityError("Cargo weight would exceed capacity")
@@ -221,12 +232,16 @@ class Inventory:
             self._items.pop(item_id, None)
         return removed
 
-    def consume_category(self, category: ItemCategory, quantity: float) -> Dict[str, float]:
+    def consume_category(
+        self, category: ItemCategory, quantity: float
+    ) -> Dict[str, float]:
         if quantity <= 0:
             return {}
         stacks = sorted(
             (item for item in self._items.values() if item.category == category),
-            key=lambda item: item.spoilage.remaining_days if item.spoilage else float("inf"),
+            key=lambda item: item.spoilage.remaining_days
+            if item.spoilage
+            else float("inf"),
         )
         remaining = float(quantity)
         consumed: Dict[str, float] = {}
@@ -250,7 +265,9 @@ class Inventory:
         return 0.0 if item is None else float(item.quantity)
 
     # -- Spoilage -------------------------------------------------------
-    def advance_time(self, days: float = 1.0, *, remove_spoiled: bool = True) -> Iterable[tuple[str, float]]:
+    def advance_time(
+        self, days: float = 1.0, *, remove_spoiled: bool = True
+    ) -> Iterable[tuple[str, float]]:
         if days < 0:
             raise ValueError("days must be non-negative")
         spoiled: list[tuple[str, float]] = []

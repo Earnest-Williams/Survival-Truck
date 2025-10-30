@@ -58,6 +58,7 @@ def compute_weight_power_factor(truck_stats: "TruckStats" | None) -> float:
     factor = weight_factor / power_factor
     return max(0.25, min(factor, 4.0))
 
+
 CommandPayload = Dict[str, Any]
 PhaseName = Literal["command", "travel", "site", "maintenance", "diplomacy", "faction"]
 PhaseHandler = Callable[["TurnContext"], None]
@@ -94,7 +95,9 @@ class TurnContext:
         target_day = self.day + days_from_now
         payload = payload or {}
         self._schedule_callback(target_day, event_type, payload)
-        self.scheduled_events.append(QueuedEvent(day=target_day, event_type=event_type, payload=payload))
+        self.scheduled_events.append(
+            QueuedEvent(day=target_day, event_type=event_type, payload=payload)
+        )
 
     def log(self, message: str) -> None:
         self.summary_lines.append(str(message))
@@ -104,7 +107,9 @@ class TurnContext:
     def travel_modifier(self) -> float:
         """Combined travel modifier from seasonal and weather effects."""
 
-        return self.season.movement_cost_multiplier * self.weather.travel_cost_multiplier
+        return (
+            self.season.movement_cost_multiplier * self.weather.travel_cost_multiplier
+        )
 
     @property
     def travel_load_factor(self) -> float:
@@ -116,7 +121,10 @@ class TurnContext:
     def maintenance_modifier(self) -> float:
         """Combined maintenance modifier from seasonal and weather effects."""
 
-        return self.season.resource_cost_multiplier * self.weather.maintenance_cost_multiplier
+        return (
+            self.season.resource_cost_multiplier
+            * self.weather.maintenance_cost_multiplier
+        )
 
     def travel_cost_for(self, base_cost: float) -> float:
         """Apply travel modifiers to ``base_cost``."""
@@ -214,7 +222,9 @@ class TurnEngine:
             raise ValueError(f"Unknown phase '{phase}'")
         self._phase_handlers[phase].append(handler)
 
-    def run_turn(self, command: CommandPayload, *, world_state: Dict[str, Any] | None = None) -> TurnContext:
+    def run_turn(
+        self, command: CommandPayload, *, world_state: Dict[str, Any] | None = None
+    ) -> TurnContext:
         """Run all phases for a single day."""
 
         current_day = self.season_tracker.current_day
@@ -263,9 +273,15 @@ class TurnEngine:
                 if waypoint_list:
                     context.world_state["planned_route"] = waypoint_list
                     context.log("Route updated: " + " -> ".join(waypoint_list))
-                    context.notify("Route updated", category="route", payload={"waypoints": waypoint_list})
+                    context.notify(
+                        "Route updated",
+                        category="route",
+                        payload={"waypoints": waypoint_list},
+                    )
 
-        module_orders = command.get("module_orders") if isinstance(command, Mapping) else None
+        module_orders = (
+            command.get("module_orders") if isinstance(command, Mapping) else None
+        )
         if isinstance(module_orders, Iterable):
             formatted_orders: List[str] = []
             for raw_order in module_orders:
@@ -280,10 +296,14 @@ class TurnEngine:
                     payload={"action": action},
                 )
             if formatted_orders:
-                context.world_state.setdefault("module_orders", []).extend(formatted_orders)
+                context.world_state.setdefault("module_orders", []).extend(
+                    formatted_orders
+                )
                 context.log("Module orders: " + ", ".join(formatted_orders))
 
-        crew_actions = command.get("crew_actions") if isinstance(command, Mapping) else None
+        crew_actions = (
+            command.get("crew_actions") if isinstance(command, Mapping) else None
+        )
         if isinstance(crew_actions, Iterable):
             assignments: List[str] = []
             for raw_action in crew_actions:
@@ -305,7 +325,9 @@ class TurnEngine:
                         payload={"participants": participants},
                     )
             if assignments:
-                context.world_state.setdefault("crew_assignments", []).extend(assignments)
+                context.world_state.setdefault("crew_assignments", []).extend(
+                    assignments
+                )
                 context.log("Crew assignments: " + "; ".join(assignments))
 
     def _default_travel_handler(self, context: TurnContext) -> None:
@@ -355,7 +377,9 @@ class TurnEngine:
         if self._notification_channel is not None:
             self._notification_channel.extend_from_events(context.day, context.events)
             if context.scheduled_events:
-                self._notification_channel.extend_from_schedule(context.scheduled_events)
+                self._notification_channel.extend_from_schedule(
+                    context.scheduled_events
+                )
 
     def _build_summary(self, context: TurnContext) -> str:
         parts: List[str] = []
@@ -371,7 +395,9 @@ class TurnEngine:
         return " | ".join(parts)
 
     # ------------------------------------------------------------------
-    def _record_weather_state(self, world_state: Dict[str, Any], weather: WeatherCondition, day: int) -> None:
+    def _record_weather_state(
+        self, world_state: Dict[str, Any], weather: WeatherCondition, day: int
+    ) -> None:
         record = {
             "day": day,
             "condition": weather.name,
@@ -453,4 +479,3 @@ class _SiteExploitationSystem:
 
     def process(self, world: GameWorld, context: TurnContext) -> None:
         self._pipeline.process_site_exploitation(context)
-

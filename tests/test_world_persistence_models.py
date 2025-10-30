@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from game.crew import SkillCheckResult, SkillType
-from game.world.config import DifficultyLevel, WorldConfig, WorldMapSettings, WorldRandomnessSettings
+from game.world.config import (
+    DifficultyLevel,
+    WorldConfig,
+    WorldMapSettings,
+    WorldRandomnessSettings,
+)
 from game.world.map import BiomeType, ChunkCoord, MapChunk, generate_site_network
 from game.world.persistence import (
     create_world_engine,
@@ -73,7 +78,9 @@ def test_world_snapshot_round_trip() -> None:
         "randomness": object(),
         "sites": {site.identifier: site},
     }
-    snapshot = WorldSnapshot.from_components(day=5, chunks=[chunk], world_state=world_state)
+    snapshot = WorldSnapshot.from_components(
+        day=5, chunks=[chunk], world_state=world_state
+    )
     assert snapshot.day == 5
     assert "randomness" not in snapshot.world_state
     assert snapshot.world_state["notes"] == ["Arrived at camp"]
@@ -175,7 +182,11 @@ def test_seasonal_snapshot_round_trip(tmp_path: Path) -> None:
 
     loaded = load_season_snapshot(engine, "slot-b", 30)
     assert loaded is not None
-    season, loaded_metadata, loaded_snapshot = loaded.season, loaded.metadata, loaded.snapshot
+    season, loaded_metadata, loaded_snapshot = (
+        loaded.season,
+        loaded.metadata,
+        loaded.snapshot,
+    )
     assert season == "spring"
     assert loaded_metadata.day == 30
     assert loaded_snapshot.day == 30
@@ -227,7 +238,9 @@ def test_site_scavenge_uses_gaussian_profile() -> None:
         margin=0.0,
         participants=(),
     )
-    expected = max(0.5, 4.0 + result.margin) * max(0.05, site.attention_curve.value_at(site.scavenged_percent))
+    expected = max(0.5, 4.0 + result.margin) * max(
+        0.05, site.attention_curve.value_at(site.scavenged_percent)
+    )
     progress = site.resolve_scavenge_attempt(result)
     assert pytest.approx(progress, rel=1e-6) == expected
 
@@ -236,10 +249,16 @@ def test_site_risk_uses_logistic_profile() -> None:
     site = _make_site()
     site.scavenged_percent = site.risk_curve.midpoint
     expected = site.risk_curve.maximum / (
-        1.0 + math.exp(-site.risk_curve.growth_rate * (site.scavenged_percent - site.risk_curve.midpoint))
+        1.0
+        + math.exp(
+            -site.risk_curve.growth_rate
+            * (site.scavenged_percent - site.risk_curve.midpoint)
+        )
     )
     risk = site.risk_at()
-    assert pytest.approx(risk, rel=1e-6) == max(site.risk_curve.floor, min(site.risk_curve.maximum, expected))
+    assert pytest.approx(risk, rel=1e-6) == max(
+        site.risk_curve.floor, min(site.risk_curve.maximum, expected)
+    )
 
 
 def test_negotiation_adjusts_gaussian_parameters() -> None:

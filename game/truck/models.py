@@ -142,7 +142,10 @@ class Truck:
             )
         if self._occupied_volume + module.size.volume > self.module_capacity.volume:
             raise ModuleCapacityError("Insufficient module volume capacity")
-        if self.crew_capacity and self.current_crew_workload + module.crew_required > self.crew_capacity:
+        if (
+            self.crew_capacity
+            and self.current_crew_workload + module.crew_required > self.crew_capacity
+        ):
             raise CrewOverloadError(
                 "Equipping module would exceed available crew capacity"
             )
@@ -183,7 +186,9 @@ class Truck:
 
     @property
     def power_draw(self) -> int:
-        return self.base_power_draw + sum(module.power_draw for module in self.modules.values())
+        return self.base_power_draw + sum(
+            module.power_draw for module in self.modules.values()
+        )
 
     @property
     def storage_capacity(self) -> int:
@@ -212,8 +217,12 @@ class Truck:
             power_draw=self.power_draw,
             storage_capacity=self.storage_capacity,
             weight_capacity=self.weight_capacity,
-            cargo_weight=self.inventory.total_weight if isinstance(self.inventory, Inventory) else 0.0,
-            cargo_volume=self.inventory.total_volume if isinstance(self.inventory, Inventory) else 0.0,
+            cargo_weight=self.inventory.total_weight
+            if isinstance(self.inventory, Inventory)
+            else 0.0,
+            cargo_volume=self.inventory.total_volume
+            if isinstance(self.inventory, Inventory)
+            else 0.0,
             crew_workload=self.current_crew_workload,
             maintenance_load=self.maintenance_load,
         )

@@ -1,5 +1,5 @@
-from game.factions import Caravan, Faction, FactionDiplomacy
-from game.factions import FactionAIController, FactionDiplomacy
+from game.factions import FactionDiplomacy
+from game.factions import FactionAIController
 from game.world.rng import WorldRandomness
 from game.world.sites import Site
 
@@ -12,9 +12,7 @@ def test_faction_ai_plans_routes_with_networkx() -> None:
     factions = [
         {
             "name": "Traders",
-            "caravans": {
-                "caravan-1": {"identifier": "caravan-1", "location": "alpha"}
-            },
+            "caravans": {"caravan-1": {"identifier": "caravan-1", "location": "alpha"}},
         },
         {"name": "Nomads"},
     ]
@@ -70,9 +68,7 @@ def test_faction_ai_fsm_cycle_records_path() -> None:
     factions = [
         {
             "name": "Traders",
-            "caravans": {
-                "caravan-1": {"identifier": "caravan-1", "location": "alpha"}
-            },
+            "caravans": {"caravan-1": {"identifier": "caravan-1", "location": "alpha"}},
         }
     ]
 

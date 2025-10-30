@@ -41,9 +41,13 @@ def test_recruitment_and_loss_apply_trait_impacts() -> None:
         perk_impacts={"medic": TraitImpact(recruit_morale=1.0, loss_morale=-1.5)},
     )
 
-    recruit = CrewMember(name="Jordan", morale=60.0, traits={"optimist"}, perks={"medic"})
+    recruit = CrewMember(
+        name="Jordan", morale=60.0, traits={"optimist"}, perks={"medic"}
+    )
 
-    recruitment_event = crew.recruit_member(recruit, base_morale_boost=1.0, reason="test_recruit")
+    recruitment_event = crew.recruit_member(
+        recruit, base_morale_boost=1.0, reason="test_recruit"
+    )
 
     assert recruitment_event.event == "recruitment"
     assert recruitment_event.member == "Jordan"
@@ -55,7 +59,9 @@ def test_recruitment_and_loss_apply_trait_impacts() -> None:
     # Newly recruited member should not be affected by their own aura adjustments.
     assert "Jordan" not in recruitment_event.morale_changes
 
-    loss_event = crew.lose_member("Jordan", base_morale_penalty=-1.0, reason="test_loss")
+    loss_event = crew.lose_member(
+        "Jordan", base_morale_penalty=-1.0, reason="test_loss"
+    )
 
     assert loss_event is not None
     assert loss_event.event == "loss"

@@ -43,7 +43,9 @@ def test_diplomacy_graph_relationship_queries() -> None:
         ("Traders", "Nomads"): 25.0,
         ("Traders", "Raiders"): -35.0,
     }
-    graph = build_diplomacy_graph(["Traders", "Nomads", "Raiders"], standings, neutral_value=0.0)
+    graph = build_diplomacy_graph(
+        ["Traders", "Nomads", "Raiders"], standings, neutral_value=0.0
+    )
 
     assert allied_factions(graph, "Traders") == ["Nomads"]
     assert hostile_factions(graph, "Traders") == ["Raiders"]

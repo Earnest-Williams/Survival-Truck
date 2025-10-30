@@ -36,6 +36,7 @@ from .diplomacy import DiplomacyView
 from .hex_map import HexMapView
 from .truck_layout import TruckLayoutView
 
+
 @dataclass
 class AppConfig:
     """Configuration payload for the UI bootstrap."""
@@ -124,7 +125,9 @@ class SurvivalTruckApp(App):
         self.turn_engine = turn_engine or TurnEngine(
             season_tracker=self.season_tracker,
             event_queue=self.event_queue,
-            resource_pipeline=ResourcePipeline(rng=self.world_randomness.generator("resources")),
+            resource_pipeline=ResourcePipeline(
+                rng=self.world_randomness.generator("resources")
+            ),
             log_channel=self.log_channel,
             notification_channel=self.notification_channel,
             world=self.world,
@@ -201,7 +204,9 @@ class SurvivalTruckApp(App):
         self.control_widget.refresh_from_panel()
 
     # ------------------------------------------------------------------
-    def on_hex_map_view_coordinate_selected(self, message: HexMapView.CoordinateSelected) -> None:
+    def on_hex_map_view_coordinate_selected(
+        self, message: HexMapView.CoordinateSelected
+    ) -> None:
         selection = message.selection
         waypoint = f"{selection.coordinate[0]},{selection.coordinate[1]}"
         self.control_panel.append_waypoint(waypoint)
@@ -209,13 +214,17 @@ class SurvivalTruckApp(App):
         self.dashboard.set_focus_detail(f"{waypoint} ({selection.terrain})")
         self._update_map_highlights()
 
-    def on_control_panel_widget_plan_reset(self, message: ControlPanelWidget.PlanReset) -> None:  # noqa: D401 - Textual hook
+    def on_control_panel_widget_plan_reset(
+        self, message: ControlPanelWidget.PlanReset
+    ) -> None:  # noqa: D401 - Textual hook
         """React to plan resets triggered from the control panel widget."""
 
         self._update_map_highlights()
         self.dashboard.set_focus_detail(None)
 
-    def on_control_panel_widget_plan_updated(self, message: ControlPanelWidget.PlanUpdated) -> None:  # noqa: D401
+    def on_control_panel_widget_plan_updated(
+        self, message: ControlPanelWidget.PlanUpdated
+    ) -> None:  # noqa: D401
         """Refresh map annotations when the control panel changes."""
 
         self._update_map_highlights()
@@ -234,7 +243,9 @@ class SurvivalTruckApp(App):
         if context is None:
             self.dashboard.set_focus_detail(None)
 
-        faction_controller_component = self.turn_engine.world.get_singleton(FactionControllerComponent)
+        faction_controller_component = self.turn_engine.world.get_singleton(
+            FactionControllerComponent
+        )
         controller = (
             faction_controller_component.controller
             if faction_controller_component is not None
@@ -343,7 +354,9 @@ class SurvivalTruckApp(App):
         ]
         for module in modules:
             truck.equip_module(module)
-        truck.inventory = Inventory(max_weight=truck.weight_capacity, max_volume=truck.storage_capacity)
+        truck.inventory = Inventory(
+            max_weight=truck.weight_capacity, max_volume=truck.storage_capacity
+        )
         truck.inventory.add_item(
             InventoryItem(
                 item_id="fuel",

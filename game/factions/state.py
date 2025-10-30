@@ -46,7 +46,9 @@ class FactionLedger:
 
     # ------------------------------------------------------------------
     @classmethod
-    def from_payload(cls, factions: Iterable[Mapping[str, object]] | None) -> "FactionLedger":
+    def from_payload(
+        cls, factions: Iterable[Mapping[str, object]] | None
+    ) -> "FactionLedger":
         ledger = cls()
         for payload in factions or []:
             name = str(payload.get("name"))
@@ -90,7 +92,9 @@ class FactionLedger:
             return
         mask = pl.col("name") == name
         if self._factions.filter(mask).is_empty():
-            self._factions = self._factions.vstack(pl.DataFrame([{"name": name}], schema=_FACTION_SCHEMA))
+            self._factions = self._factions.vstack(
+                pl.DataFrame([{"name": name}], schema=_FACTION_SCHEMA)
+            )
 
     def iterate_factions(self) -> Iterator["FactionRecord"]:
         for row in self._factions.iter_rows(named=True):
@@ -107,7 +111,9 @@ class FactionLedger:
         mask = (pl.col("faction") == faction) & (pl.col("site") == site)
         if self._known_sites.filter(mask).is_empty():
             self._known_sites = self._known_sites.vstack(
-                pl.DataFrame([{"faction": faction, "site": site}], schema=_KNOWN_SITE_SCHEMA)
+                pl.DataFrame(
+                    [{"faction": faction, "site": site}], schema=_KNOWN_SITE_SCHEMA
+                )
             )
 
     def known_sites(self, faction: str) -> List[str]:
@@ -131,7 +137,9 @@ class FactionLedger:
             )
         )
 
-    def resource_amount(self, faction: str, resource: str, default: float = 0.0) -> float:
+    def resource_amount(
+        self, faction: str, resource: str, default: float = 0.0
+    ) -> float:
         mask = (pl.col("faction") == faction) & (pl.col("resource") == resource)
         matches = self._resources.filter(mask)
         if matches.is_empty():
@@ -159,7 +167,9 @@ class FactionLedger:
         return float(matches.get_column("weight")[0])
 
     # ------------------------------------------------------------------
-    def register_caravan(self, faction: str, identifier: str, location: str) -> "CaravanRecord":
+    def register_caravan(
+        self, faction: str, identifier: str, location: str
+    ) -> "CaravanRecord":
         if not identifier:
             raise ValueError("caravan identifier cannot be empty")
         self.ensure_faction(faction)
@@ -184,7 +194,9 @@ class FactionLedger:
     def remove_caravan(self, identifier: str) -> None:
         mask = pl.col("identifier") == identifier
         self._caravans = self._caravans.filter(~mask)
-        self._caravan_cargo = self._caravan_cargo.filter(pl.col("caravan") != identifier)
+        self._caravan_cargo = self._caravan_cargo.filter(
+            pl.col("caravan") != identifier
+        )
 
     def caravans_for_faction(self, faction: str) -> Dict[str, "CaravanRecord"]:
         matches = self._caravans.filter(pl.col("faction") == faction)
@@ -307,7 +319,9 @@ class FactionRecord:
             category_value = self.ledger.preference(self.name, category, float("nan"))
             if not _is_nan(category_value):
                 return category_value
-            grouped = self.ledger.preference(self.name, f"category:{category}", float("nan"))
+            grouped = self.ledger.preference(
+                self.name, f"category:{category}", float("nan")
+            )
             if not _is_nan(grouped):
                 return grouped
         fallback = self.ledger.preference(self.name, "default", float("nan"))
@@ -338,11 +352,15 @@ class FactionRecord:
             "known_sites": self.known_sites,
             "resources": {
                 row["resource"]: float(row["amount"])
-                for row in self.ledger._resources.filter(pl.col("faction") == self.name).iter_rows(named=True)
+                for row in self.ledger._resources.filter(
+                    pl.col("faction") == self.name
+                ).iter_rows(named=True)
             },
             "resource_preferences": {
                 row["key"]: float(row["weight"])
-                for row in self.ledger._preferences.filter(pl.col("faction") == self.name).iter_rows(named=True)
+                for row in self.ledger._preferences.filter(
+                    pl.col("faction") == self.name
+                ).iter_rows(named=True)
             },
             "caravans": {
                 identifier: handle.to_dict()
@@ -393,14 +411,18 @@ class CaravanRecord:
         if not route:
             return None
         next_site = str(route.pop(0))
-        self.ledger.update_caravan(self.identifier, location=next_site, days_until_move=0)
+        self.ledger.update_caravan(
+            self.identifier, location=next_site, days_until_move=0
+        )
         self.ledger.update_caravan_route(self.identifier, route)
         if next_site == location:
             return None
         return next_site
 
     def schedule_next_leg(self, edge_cost: int) -> None:
-        self.ledger.update_caravan(self.identifier, days_until_move=max(0, int(edge_cost)))
+        self.ledger.update_caravan(
+            self.identifier, days_until_move=max(0, int(edge_cost))
+        )
 
     def unload_all_cargo(self) -> int:
         return self.ledger.consume_caravan_cargo(self.identifier)
