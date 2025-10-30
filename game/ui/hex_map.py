@@ -3,24 +3,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Mapping, MutableMapping, Sequence, Tuple
+from typing import Dict, Mapping, MutableMapping, Sequence, Tuple, cast
 
 from textual.binding import Binding
 from textual.message import Message
-from textual.reactive import reactive
+from textual.message_pump import MessagePump
+from textual.reactive import Reactive, reactive
 from textual.widget import Widget
 
 Coordinate = Tuple[int, int]
+GridData = Tuple[Tuple[str, ...], ...]
 
 
 def _normalise_map(
     grid: Sequence[Sequence[str]] | None,
-) -> Tuple[Tuple[str, ...], ...]:
+) -> GridData:
     """Return an immutable copy of the provided map grid."""
 
     if not grid:
-        return tuple()
-    return tuple(tuple(str(cell) for cell in row) for row in grid)
+        return cast(GridData, tuple())
+    return cast(
+        GridData,
+        tuple(tuple(str(cell) for cell in row) for row in grid),
+    )
 
 
 def _render_hex_map(
@@ -33,7 +38,7 @@ def _render_hex_map(
     from rich.panel import Panel
     from rich.text import Text
 
-    lines = []
+    lines: list[str] = []
     for row_index, row in enumerate(grid):
         prefix = " " if row_index % 2 else ""
         cell_text: list[str] = []
@@ -88,11 +93,12 @@ class HexMapView(Widget):
         """Posted when the user confirms a map coordinate."""
 
         def __init__(self, sender: "HexMapView", selection: MapSelection) -> None:
-            super().__init__(sender)
+            super().__init__()
             self.selection = selection
+            self.set_sender(cast(MessagePump, sender))
 
-    _grid = reactive(tuple(), layout=True)
-    cursor = reactive((0, 0), layout=False)
+    _grid: Reactive[GridData] = reactive(tuple(), layout=True)
+    cursor: Reactive[Coordinate] = reactive((0, 0), layout=False)
 
     def __init__(
         self,
@@ -112,14 +118,25 @@ class HexMapView(Widget):
         self.title = title
         self._highlights: MutableMapping[Coordinate, str] = {}
         if grid is not None:
-            self._grid = _normalise_map(grid)
+            self.grid_data = _normalise_map(grid)
+
+    @property
+    def grid_data(self) -> GridData:
+        """Return the current reactive grid value."""
+
+        return cast(GridData, self._grid)
+
+    @grid_data.setter
+    def grid_data(self, grid: GridData) -> None:
+        self._grid = grid
 
     def set_map_data(self, grid: Sequence[Sequence[str]]) -> None:
-        self._grid = _normalise_map(grid)
+        self.grid_data = _normalise_map(grid)
         max_row = max(len(grid) - 1, 0)
         max_col = max((len(row) for row in grid), default=1) - 1 if grid else 0
-        row = min(self.cursor[0], max_row)
-        col = min(self.cursor[1], max_col)
+        cursor = cast(Coordinate, self.cursor)
+        row = min(cursor[0], max_row)
+        col = min(cursor[1], max_col)
         self.cursor = (row, col)
         self.refresh()
 
@@ -130,14 +147,16 @@ class HexMapView(Widget):
         self.refresh()
 
     def move_cursor(self, row_delta: int, col_delta: int) -> None:
-        if not self._grid:
+        grid = self.grid_data
+        if not grid:
             return
-        row, col = self.cursor
-        max_row = len(self._grid) - 1
-        max_col = max((len(r) for r in self._grid), default=1) - 1 if self._grid else 0
+        cursor = cast(Coordinate, self.cursor)
+        row, col = cursor
+        max_row = len(grid) - 1
+        max_col = max((len(r) for r in grid), default=1) - 1 if grid else 0
         row = max(0, min(max_row, row + row_delta))
         col = max(0, min(max_col, col + col_delta))
-        if (row, col) != self.cursor:
+        if (row, col) != cursor:
             self.cursor = (row, col)
             self.refresh()
             self._announce_selection()
@@ -155,35 +174,37 @@ class HexMapView(Widget):
         self.move_cursor(1, 0)
 
     def action_confirm(self) -> None:
-        if not self._grid:
+        grid = self.grid_data
+        if not grid:
             return
-        row, col = self.cursor
-        terrain = (
-            self._grid[row][col]
-            if row < len(self._grid) and col < len(self._grid[row])
-            else "?"
-        )
+        cursor = cast(Coordinate, self.cursor)
+        row, col = cursor
+        terrain = grid[row][col] if row < len(grid) and col < len(grid[row]) else "?"
         self.post_message(
             self.CoordinateSelected(self, MapSelection((row, col), terrain))
         )
 
     def _announce_selection(self) -> None:
-        if not self._grid:
+        grid = self.grid_data
+        if not grid:
             return
-        row, col = self.cursor
-        if row >= len(self._grid) or col >= len(self._grid[row]):
+        cursor = cast(Coordinate, self.cursor)
+        row, col = cursor
+        if row >= len(grid) or col >= len(grid[row]):
             return
-        terrain = self._grid[row][col]
+        terrain = grid[row][col]
         self.post_message(
             self.CoordinateSelected(self, MapSelection((row, col), terrain))
         )
 
     def render(self):  # type: ignore[override]
         highlight_map: Dict[Coordinate, str] = dict(self._highlights)
-        if self._grid:
-            row, col = self.cursor
-            if row < len(self._grid) and col < len(self._grid[row]):
-                terrain = self._grid[row][col]
+        grid = self.grid_data
+        if grid:
+            cursor = cast(Coordinate, self.cursor)
+            row, col = cursor
+            if row < len(grid) and col < len(grid[row]):
+                terrain = grid[row][col]
                 symbol = self.terrain_symbols.get(str(terrain))
                 if symbol is None:
                     symbol = (
@@ -191,7 +212,7 @@ class HexMapView(Widget):
                     )
                 highlight_map[(row, col)] = f"[reverse]{symbol}[/reverse]"
         return _render_hex_map(
-            self._grid,
+            grid,
             self.terrain_symbols,
             self.unknown_symbol,
             self.title,
