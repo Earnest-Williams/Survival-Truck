@@ -7,6 +7,8 @@ from pathlib import Path
 
 import game
 
+meta: dict[str, str] = {}
+
 
 def _load_pyproject() -> dict:
     with Path("pyproject.toml").open("rb") as handle:

@@ -3,13 +3,31 @@
 from __future__ import annotations
 
 from itertools import combinations
-from typing import Callable, Iterable, Mapping, MutableMapping, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Mapping,
+    MutableMapping,
+    Sequence,
+    cast,
+)
 
 import networkx as nx
 
 from .map import HexCoord
 
 CostFunction = Callable[[HexCoord], float]
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import esper
+
+    EsperWorld = esper.World
+else:  # pragma: no cover - runtime fallback for typing only
+    EsperWorld = Any
+
+WorldGraph = nx.Graph[str]
 
 
 def build_site_movement_graph(
@@ -18,10 +36,10 @@ def build_site_movement_graph(
     terrain_costs: Mapping[object, float] | CostFunction | None = None,
     connections: Mapping[str, Iterable[str]] | None = None,
     default_cost: float = 1.0,
-) -> nx.Graph:
+) -> WorldGraph:
     """Return a weighted graph describing travel between known sites."""
 
-    graph = nx.Graph()
+    graph: WorldGraph = nx.Graph()
     for site_id, coord in site_positions.items():
         graph.add_node(site_id, coord=coord)
 
@@ -54,7 +72,7 @@ def build_site_movement_graph(
 
 
 def shortest_path_between_sites(
-    graph: nx.Graph, start: str, goal: str
+    graph: WorldGraph, start: str, goal: str
 ) -> Sequence[str]:
     """Return the lowest-cost path between ``start`` and ``goal`` using A* search."""
 
@@ -71,7 +89,7 @@ def shortest_path_between_sites(
     return nx.astar_path(graph, start, goal, heuristic=heuristic, weight="weight")
 
 
-def path_travel_cost(graph: nx.Graph, path: Sequence[str]) -> float:
+def path_travel_cost(graph: WorldGraph, path: Sequence[str]) -> float:
     """Return the total travel cost for ``path`` within ``graph``."""
 
     if len(path) < 2:
@@ -88,10 +106,10 @@ def build_diplomacy_graph(
     standings: Mapping[tuple[str, str], float],
     *,
     neutral_value: float = 0.0,
-) -> nx.Graph:
+) -> WorldGraph:
     """Construct an undirected graph capturing faction relationships."""
 
-    graph = nx.Graph(neutral_value=float(neutral_value))
+    graph: WorldGraph = nx.Graph(neutral_value=float(neutral_value))
     for faction in factions:
         graph.add_node(faction)
     for (faction_a, faction_b), value in standings.items():
@@ -102,7 +120,7 @@ def build_diplomacy_graph(
 
 
 def relationship(
-    graph: nx.Graph, faction_a: str, faction_b: str, *, default: float | None = None
+    graph: WorldGraph, faction_a: str, faction_b: str, *, default: float | None = None
 ) -> float:
     """Return the stored relationship between two factions."""
 
@@ -116,14 +134,15 @@ def relationship(
 
 
 def allied_factions(
-    graph: nx.Graph, faction: str, threshold: float = 15.0
+    graph: WorldGraph, faction: str, threshold: float = 15.0
 ) -> list[str]:
     """Return factions considered allied to ``faction`` according to ``threshold``."""
 
     allies: list[str] = []
     if faction not in graph:
         return allies
-    for neighbor in graph.nodes:
+    for node in graph.nodes:
+        neighbor = cast(str, node)
         if neighbor == faction:
             continue
         if relationship(graph, faction, neighbor) >= threshold:
@@ -132,14 +151,15 @@ def allied_factions(
 
 
 def hostile_factions(
-    graph: nx.Graph, faction: str, threshold: float = -15.0
+    graph: WorldGraph, faction: str, threshold: float = -15.0
 ) -> list[str]:
     """Return factions considered hostile to ``faction`` according to ``threshold``."""
 
     hostiles: list[str] = []
     if faction not in graph:
         return hostiles
-    for neighbor in graph.nodes:
+    for node in graph.nodes:
+        neighbor = cast(str, node)
         if neighbor == faction:
             continue
         if relationship(graph, faction, neighbor) <= threshold:
