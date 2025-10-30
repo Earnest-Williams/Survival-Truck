@@ -20,7 +20,7 @@ from opensimplex import OpenSimplex
 from ..rng import WorldRandomness
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checkers
-    from ..sites import AttentionCurve, Site, SiteType
+    from ..sites import Site, SiteType
 
 
 class BiomeType(str, Enum):

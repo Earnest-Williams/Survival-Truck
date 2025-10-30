@@ -7,13 +7,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from game.engine.turn_engine import TurnEngine, compute_weight_power_factor
-from game.events.event_queue import EventQueue
-from game.time.season_tracker import SeasonTracker
-from game.time.weather import WeatherCondition, WeatherSystem
-from game.truck.inventory import Inventory, InventoryItem, ItemCategory
-from game.truck.models import Dimensions, Truck
-from game.engine.world import TruckComponent
+from game.engine.turn_engine import (  # noqa: E402
+    TurnEngine,
+    compute_weight_power_factor,
+)
+from game.events.event_queue import EventQueue  # noqa: E402
+from game.time.season_tracker import SeasonTracker  # noqa: E402
+from game.time.weather import WeatherCondition, WeatherSystem  # noqa: E402
+from game.truck.inventory import Inventory, InventoryItem, ItemCategory  # noqa: E402
+from game.truck.models import Dimensions, Truck  # noqa: E402
+from game.engine.world import TruckComponent  # noqa: E402
 
 
 def test_weather_system_respects_season_tables():

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Mapping, Sequence
+from typing import TYPE_CHECKING, Dict, Iterable, List, Mapping, Sequence
 
 from numpy.random import Generator
 
@@ -16,6 +16,9 @@ from ..truck import (
 )
 from ..world.stateframes import SiteStateFrame
 from .world import CrewComponent, SitesComponent, TruckComponent
+
+if TYPE_CHECKING:
+    from .turn_engine import TurnContext
 
 
 @dataclass
