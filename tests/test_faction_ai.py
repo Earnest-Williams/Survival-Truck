@@ -1,5 +1,4 @@
-from game.factions import FactionDiplomacy
-from game.factions import FactionAIController
+from game.factions import FactionAIController, FactionDiplomacy
 from game.world.rng import WorldRandomness
 from game.world.sites import Site
 

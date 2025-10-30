@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -33,7 +33,7 @@ class BiomeWeighting(BaseModel):
         return float(value)
 
     @property
-    def normalised(self) -> Dict[str, float]:
+    def normalised(self) -> dict[str, float]:
         """Return weights normalised to sum to one."""
 
         totals = {
@@ -95,11 +95,11 @@ class WorldConfig(BaseModel):
     map: WorldMapSettings = Field(default_factory=WorldMapSettings)
     randomness: WorldRandomnessSettings = Field(default_factory=WorldRandomnessSettings)
     biome_weights: BiomeWeighting = Field(default_factory=BiomeWeighting)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("metadata", mode="before")
     @classmethod
-    def _ensure_metadata_mapping(cls, value: object) -> Dict[str, Any]:
+    def _ensure_metadata_mapping(cls, value: object) -> dict[str, Any]:
         if value is None:
             return {}
         if not isinstance(value, dict):

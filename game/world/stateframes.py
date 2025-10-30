@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
-from typing import Dict, Iterable, Mapping, MutableMapping
 
 import polars as pl
 
 from ..crew import SkillCheckResult, SkillType
 from .sites import AttentionCurve, RiskCurve, Site, SiteType
 
-
-_SITE_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+_SITE_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
     "identifier": pl.String,
     "site_type": pl.String,
     "exploration_percent": pl.Float64,
@@ -28,7 +27,7 @@ _SITE_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
     "settlement_id": pl.String,
 }
 
-_CONNECTION_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+_CONNECTION_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
     "source": pl.String,
     "target": pl.String,
     "cost": pl.Float64,
@@ -74,16 +73,12 @@ class SiteStateFrame:
             ]
         )
         self._connections = (
-            pl.DataFrame(schema=_CONNECTION_FRAME_SCHEMA)
-            if connections is None
-            else connections
+            pl.DataFrame(schema=_CONNECTION_FRAME_SCHEMA) if connections is None else connections
         )
 
     # ------------------------------------------------------------------
     @classmethod
-    def from_sites(
-        cls, sites: Mapping[str, Site] | Iterable[Site] | None
-    ) -> "SiteStateFrame":
+    def from_sites(cls, sites: Mapping[str, Site] | Iterable[Site] | None) -> SiteStateFrame:
         if not sites:
             return cls()
         if isinstance(sites, Mapping):
@@ -128,10 +123,8 @@ class SiteStateFrame:
         return cls(sites=site_df, connections=connection_df)
 
     # ------------------------------------------------------------------
-    def clone(self) -> "SiteStateFrame":
-        return SiteStateFrame(
-            sites=self._sites.clone(), connections=self._connections.clone()
-        )
+    def clone(self) -> SiteStateFrame:
+        return SiteStateFrame(sites=self._sites.clone(), connections=self._connections.clone())
 
     @property
     def sites(self) -> pl.DataFrame:
@@ -174,7 +167,7 @@ class SiteStateFrame:
         connections = {
             target: float(cost)
             for target, cost in zip(
-                neighbours.get("target", []), neighbours.get("cost", [])
+                neighbours.get("target", []), neighbours.get("cost", []), strict=False
             )
         }
         return Site(
@@ -190,8 +183,8 @@ class SiteStateFrame:
             connections=connections,
         )
 
-    def as_mapping(self) -> Dict[str, Site]:
-        payload: Dict[str, Site] = {}
+    def as_mapping(self) -> dict[str, Site]:
+        payload: dict[str, Site] = {}
         for row in self._sites.iter_rows(named=True):
             attention = AttentionCurve(
                 peak=row["attention_peak"],
@@ -212,7 +205,7 @@ class SiteStateFrame:
             connections = {
                 target: float(cost)
                 for target, cost in zip(
-                    neighbours.get("target", []), neighbours.get("cost", [])
+                    neighbours.get("target", []), neighbours.get("cost", []), strict=False
                 )
             }
             payload[row["identifier"]] = Site(
@@ -230,9 +223,7 @@ class SiteStateFrame:
         return payload
 
     # ------------------------------------------------------------------
-    def _update_site(
-        self, identifier: str, values: MutableMapping[str, object]
-    ) -> None:
+    def _update_site(self, identifier: str, values: MutableMapping[str, object]) -> None:
         if not values:
             return
         mask = pl.col("identifier") == identifier
@@ -282,7 +273,7 @@ class SiteStateFrame:
         if not result.success:
             progress *= 0.25
         scavenged = _clamp_percentage(row["scavenged_percent"] + progress)
-        updates: Dict[str, object] = {"scavenged_percent": scavenged}
+        updates: dict[str, object] = {"scavenged_percent": scavenged}
         population = int(row["population"])
         if result.success and population > 0:
             morale_boost = max(0, int(result.margin * max(1.0, intensity)))
@@ -294,9 +285,7 @@ class SiteStateFrame:
         self, identifier: str, result: SkillCheckResult, faction: str
     ) -> float:
         if result.skill != SkillType.NEGOTIATION:
-            raise ValueError(
-                "apply_negotiation_result requires a negotiation skill result"
-            )
+            raise ValueError("apply_negotiation_result requires a negotiation skill result")
         site_match = self._sites.filter(pl.col("identifier") == identifier)
         if site_match.is_empty():
             return 0.0
@@ -322,7 +311,7 @@ class SiteStateFrame:
             mu=max(0.0, min(100.0, curve.mu + mu_delta)),
             sigma=max(1.0, curve.sigma * sigma_factor),
         )
-        updates: Dict[str, object] = {
+        updates: dict[str, object] = {
             "attention_peak": new_curve.peak,
             "attention_mu": new_curve.mu,
             "attention_sigma": new_curve.sigma,
@@ -355,7 +344,7 @@ class SiteStateFrame:
             )
         )
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "sites": self._sites.clone(),
             "connections": self._connections.clone(),

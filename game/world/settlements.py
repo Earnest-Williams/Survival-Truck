@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Mapping, MutableMapping, TypedDict
+from typing import TypedDict
 
 from numpy.random import Generator
 
@@ -89,9 +90,9 @@ class Settlement:
         }
 
     @staticmethod
-    def from_dict(payload: SettlementPayload | Mapping[str, object]) -> "Settlement":
+    def from_dict(payload: SettlementPayload | Mapping[str, object]) -> Settlement:
         resources_payload = payload.get("resources", {})
-        resources: Dict[str, int] = {}
+        resources: dict[str, int] = {}
         if isinstance(resources_payload, Mapping):
             for key, value in resources_payload.items():
                 resources[str(key)] = int(value)
@@ -116,7 +117,7 @@ class SettlementManager:
         *,
         rng: Generator | None = None,
     ) -> None:
-        self._settlements: Dict[str, Settlement] = {
+        self._settlements: dict[str, Settlement] = {
             settlement.identifier: settlement for settlement in (settlements or [])
         }
         self.rng = rng
@@ -139,9 +140,7 @@ class SettlementManager:
             return self._settlements[site.settlement_id]
 
         self._counter += 1
-        identifier = (
-            site.settlement_id or f"{site.identifier}-settlement-{self._counter}"
-        )
+        identifier = site.settlement_id or f"{site.identifier}-settlement-{self._counter}"
         name = base_name or f"{site.identifier.title()} Haven"
         if initial_population is not None:
             population = initial_population
@@ -168,7 +167,7 @@ class SettlementManager:
     def advance_day(self, sites: Mapping[str, Site]) -> None:
         """Update all settlements and synchronize their host sites."""
 
-        to_remove: List[str] = []
+        to_remove: list[str] = []
         for settlement in self._settlements.values():
             settlement.advance_day()
             site = sites.get(settlement.site_id)
@@ -180,9 +179,8 @@ class SettlementManager:
                 site.controlling_faction = None
                 site.settlement_id = None
                 to_remove.append(settlement.identifier)
-            else:
-                if site.controlling_faction is None:
-                    site.controlling_faction = settlement.name
+            elif site.controlling_faction is None:
+                site.controlling_faction = settlement.name
         for identifier in to_remove:
             self._settlements.pop(identifier, None)
 

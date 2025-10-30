@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List
 
 from .inventory import Inventory
 
@@ -28,7 +28,7 @@ class Dimensions:
     width: int
     height: int
 
-    def fits_within(self, other: "Dimensions") -> bool:
+    def fits_within(self, other: Dimensions) -> bool:
         """Return True if these dimensions fit within the provided envelope."""
 
         return (
@@ -102,8 +102,8 @@ class MaintenanceReport:
     maintenance_applied: float
     maintenance_required: float
     truck_condition: float
-    module_conditions: Dict[str, float]
-    degraded_modules: List[str] = field(default_factory=list)
+    module_conditions: dict[str, float]
+    degraded_modules: list[str] = field(default_factory=list)
     cost_multiplier: float = 1.0
 
     @property
@@ -124,7 +124,7 @@ class Truck:
     base_weight_capacity: float = 0.0
     base_maintenance_load: int = 0
     base_degradation_rate: float = 0.005
-    modules: Dict[str, TruckModule] = field(default_factory=dict)
+    modules: dict[str, TruckModule] = field(default_factory=dict)
     condition: float = 1.0
     inventory: Inventory = field(default_factory=Inventory)
 
@@ -146,9 +146,7 @@ class Truck:
             self.crew_capacity
             and self.current_crew_workload + module.crew_required > self.crew_capacity
         ):
-            raise CrewOverloadError(
-                "Equipping module would exceed available crew capacity"
-            )
+            raise CrewOverloadError("Equipping module would exceed available crew capacity")
         self.modules[module.module_id] = module
         self._sync_inventory_capacity()
 
@@ -180,15 +178,11 @@ class Truck:
 
     @property
     def power_output(self) -> int:
-        return self.base_power_output + sum(
-            module.power_output for module in self.modules.values()
-        )
+        return self.base_power_output + sum(module.power_output for module in self.modules.values())
 
     @property
     def power_draw(self) -> int:
-        return self.base_power_draw + sum(
-            module.power_draw for module in self.modules.values()
-        )
+        return self.base_power_draw + sum(module.power_draw for module in self.modules.values())
 
     @property
     def storage_capacity(self) -> int:
@@ -241,7 +235,7 @@ class Truck:
         stress = 0.0
         if required > 0:
             stress = max(0.0, (required - maintenance_points) / required)
-        degraded_modules: List[str] = []
+        degraded_modules: list[str] = []
 
         base_loss = self.base_degradation_rate * (1.0 + stress)
         previous_condition = self.condition

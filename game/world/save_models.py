@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, is_dataclass
-from datetime import datetime, timezone
-from typing import Dict, List
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -23,7 +22,7 @@ def _coerce_json(value: object) -> object:
     if value is None or isinstance(value, _SIMPLE_TYPES):
         return value
     if isinstance(value, Mapping):
-        result: Dict[str, object] = {}
+        result: dict[str, object] = {}
         dropped = False
         for key, item in value.items():
             coerced = _coerce_json(item)
@@ -35,7 +34,7 @@ def _coerce_json(value: object) -> object:
             return result
         return _DROP
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        result_list: List[object] = []
+        result_list: list[object] = []
         dropped = False
         for item in value:
             coerced = _coerce_json(item)
@@ -48,7 +47,7 @@ def _coerce_json(value: object) -> object:
         return _DROP
     if is_dataclass(value):
         return _coerce_json(asdict(value))
-    if hasattr(value, "to_dict") and callable(getattr(value, "to_dict")):
+    if hasattr(value, "to_dict") and callable(value.to_dict):
         return _coerce_json(value.to_dict())
     if hasattr(value, "__dict__"):
         return _coerce_json(vars(value))
@@ -68,9 +67,7 @@ class HexPointModel(BaseModel):
     def _coerce_tuple(cls, value: object) -> Mapping[str, object] | object:
         if isinstance(value, Mapping):
             return value
-        if isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
             sequence = list(value)
             if len(sequence) >= 2:
                 return {"q": int(sequence[0]), "r": int(sequence[1])}
@@ -117,9 +114,9 @@ class ResourceLogEntryModel(BaseModel):
 
     phase: str
     source: str
-    consumed: Dict[str, float] = Field(default_factory=dict)
-    produced: Dict[str, float] = Field(default_factory=dict)
-    notes: Dict[str, object] = Field(default_factory=dict)
+    consumed: dict[str, float] = Field(default_factory=dict)
+    produced: dict[str, float] = Field(default_factory=dict)
+    notes: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -136,29 +133,25 @@ class ResourceLogEntryModel(BaseModel):
 
     @field_validator("consumed", "produced", mode="before")
     @classmethod
-    def _normalise_resource_map(cls, value: object) -> Dict[str, float]:
+    def _normalise_resource_map(cls, value: object) -> dict[str, float]:
         if value in (None, {}):
             return {}
         if not isinstance(value, Mapping):
-            raise TypeError(
-                "resource map must be a mapping of resource ids to quantities"
-            )
-        normalised: Dict[str, float] = {}
+            raise TypeError("resource map must be a mapping of resource ids to quantities")
+        normalised: dict[str, float] = {}
         for key, amount in value.items():
             normalised[str(key)] = float(amount)
         return normalised
 
     @field_validator("notes", mode="before")
     @classmethod
-    def _normalise_notes(cls, value: object) -> Dict[str, object]:
+    def _normalise_notes(cls, value: object) -> dict[str, object]:
         if value in (None, {}):
             return {}
         if not isinstance(value, Mapping):
             coerced = _coerce_json(value)
-            return (
-                {} if coerced is _DROP or not isinstance(coerced, Mapping) else coerced
-            )
-        result: Dict[str, object] = {}
+            return {} if coerced is _DROP or not isinstance(coerced, Mapping) else coerced
+        result: dict[str, object] = {}
         for key, entry in value.items():
             coerced = _coerce_json(entry)
             if coerced is _DROP:
@@ -172,21 +165,21 @@ class SiteGraphModel(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    positions: Dict[str, HexPointModel] = Field(default_factory=dict)
-    connections: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    positions: dict[str, HexPointModel] = Field(default_factory=dict)
+    connections: dict[str, dict[str, float]] = Field(default_factory=dict)
 
     @field_validator("connections", mode="before")
     @classmethod
-    def _coerce_connections(cls, value: object) -> Dict[str, Dict[str, float]]:
+    def _coerce_connections(cls, value: object) -> dict[str, dict[str, float]]:
         if value in (None, {}):
             return {}
         if not isinstance(value, Mapping):
             raise TypeError("site graph connections must be a mapping")
-        result: Dict[str, Dict[str, float]] = {}
+        result: dict[str, dict[str, float]] = {}
         for key, mapping in value.items():
             if not isinstance(mapping, Mapping):
                 continue
-            inner: Dict[str, float] = {}
+            inner: dict[str, float] = {}
             for neighbour, cost in mapping.items():
                 inner[str(neighbour)] = float(cost)
             result[str(key)] = inner
@@ -198,64 +191,58 @@ class WorldStatePayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    notes: List[str] = Field(default_factory=list)
-    progress: Dict[str, float] = Field(default_factory=dict)
+    notes: list[str] = Field(default_factory=list)
+    progress: dict[str, float] = Field(default_factory=dict)
     season_state: str | None = None
     site_graph: SiteGraphModel | None = None
-    planned_route: List[str] = Field(default_factory=list)
-    module_orders: List[str] = Field(default_factory=list)
-    crew_assignments: List[str] = Field(default_factory=list)
-    travel_reports: List[TravelReportModel] = Field(default_factory=list)
+    planned_route: list[str] = Field(default_factory=list)
+    module_orders: list[str] = Field(default_factory=list)
+    crew_assignments: list[str] = Field(default_factory=list)
+    travel_reports: list[TravelReportModel] = Field(default_factory=list)
     last_travel_cost: TravelReportModel | None = None
-    resource_events: List[ResourceLogEntryModel] = Field(default_factory=list)
+    resource_events: list[ResourceLogEntryModel] = Field(default_factory=list)
     weather: WeatherRecordModel | None = None
-    weather_history: List[WeatherRecordModel] = Field(default_factory=list)
-    other_state: Dict[str, object] = Field(default_factory=dict)
+    weather_history: list[WeatherRecordModel] = Field(default_factory=list)
+    other_state: dict[str, object] = Field(default_factory=dict)
 
     @field_validator("notes", mode="before")
     @classmethod
-    def _normalise_notes(cls, value: object) -> List[str]:
+    def _normalise_notes(cls, value: object) -> list[str]:
         if value in (None, []):
             return []
-        if not isinstance(value, Sequence) or isinstance(
-            value, (str, bytes, bytearray)
-        ):
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
             return [str(value)]
         return [str(entry) for entry in value]
 
     @field_validator("progress", mode="before")
     @classmethod
-    def _normalise_progress(cls, value: object) -> Dict[str, float]:
+    def _normalise_progress(cls, value: object) -> dict[str, float]:
         if value in (None, {}):
             return {}
         if not isinstance(value, Mapping):
             raise TypeError("progress must be a mapping of task names to values")
-        normalised: Dict[str, float] = {}
+        normalised: dict[str, float] = {}
         for key, amount in value.items():
             normalised[str(key)] = float(amount)
         return normalised
 
-    @field_validator(
-        "planned_route", "module_orders", "crew_assignments", mode="before"
-    )
+    @field_validator("planned_route", "module_orders", "crew_assignments", mode="before")
     @classmethod
-    def _normalise_strings(cls, value: object) -> List[str]:
+    def _normalise_strings(cls, value: object) -> list[str]:
         if value in (None, []):
             return []
-        if not isinstance(value, Sequence) or isinstance(
-            value, (str, bytes, bytearray)
-        ):
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
             return [str(value)]
         return [str(entry) for entry in value]
 
     @field_validator("other_state", mode="before")
     @classmethod
-    def _ensure_mapping(cls, value: object) -> Dict[str, object]:
+    def _ensure_mapping(cls, value: object) -> dict[str, object]:
         if value in (None, {}):
             return {}
         if not isinstance(value, Mapping):
             raise TypeError("other_state must be a mapping")
-        result: Dict[str, object] = {}
+        result: dict[str, object] = {}
         for key, entry in value.items():
             coerced = _coerce_json(entry)
             if coerced is _DROP:
@@ -264,13 +251,13 @@ class WorldStatePayload(BaseModel):
         return result
 
     @classmethod
-    def from_mapping(cls, state: Mapping[str, object] | None) -> "WorldStatePayload":
+    def from_mapping(cls, state: Mapping[str, object] | None) -> WorldStatePayload:
         if not state:
             return cls()
         field_names = set(cls.model_fields)
         field_names.discard("other_state")
-        payload: Dict[str, object] = {}
-        extras: Dict[str, object] = {}
+        payload: dict[str, object] = {}
+        extras: dict[str, object] = {}
         for key, value in state.items():
             if key == "sites":
                 continue
@@ -284,20 +271,20 @@ class WorldStatePayload(BaseModel):
         payload["other_state"] = extras
         return cls.model_validate(payload)
 
-    def to_serializable_dict(self) -> Dict[str, object]:
+    def to_serializable_dict(self) -> dict[str, object]:
         data = self.model_dump(
             mode="json",
             exclude={"other_state"},
             exclude_none=True,
         )
-        serializable: Dict[str, object] = dict(self.other_state)
+        serializable: dict[str, object] = dict(self.other_state)
         for key, value in data.items():
             if value in (None, [], {}):
                 continue
             serializable[key] = value
         return serializable
 
-    def to_state_dict(self) -> Dict[str, object]:
+    def to_state_dict(self) -> dict[str, object]:
         base = self.to_serializable_dict()
         return base
 
@@ -320,10 +307,10 @@ class ChunkSnapshot(BaseModel):
     q: int
     r: int
     chunk_size: int = Field(ge=1)
-    tiles: List[ChunkTileModel] = Field(default_factory=list)
+    tiles: list[ChunkTileModel] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_tiles(self) -> "ChunkSnapshot":
+    def _validate_tiles(self) -> ChunkSnapshot:
         max_index = self.chunk_size - 1
         for tile in self.tiles:
             if tile.local_q < 0 or tile.local_q > max_index:
@@ -333,14 +320,12 @@ class ChunkSnapshot(BaseModel):
         return self
 
     @classmethod
-    def from_chunk(cls, chunk: MapChunk) -> "ChunkSnapshot":
+    def from_chunk(cls, chunk: MapChunk) -> ChunkSnapshot:
         tiles = [
             ChunkTileModel(local_q=q, local_r=r, biome=biome)
             for (q, r), biome in sorted(chunk.biomes.items())
         ]
-        return cls(
-            q=chunk.coord.q, r=chunk.coord.r, chunk_size=chunk.chunk_size, tiles=tiles
-        )
+        return cls(q=chunk.coord.q, r=chunk.coord.r, chunk_size=chunk.chunk_size, tiles=tiles)
 
     def to_chunk(self) -> MapChunk:
         coord = ChunkCoord(self.q, self.r)
@@ -365,7 +350,7 @@ class AttentionCurveModel(BaseModel):
         return float(value)
 
     @classmethod
-    def from_domain(cls, curve: AttentionCurve) -> "AttentionCurveModel":
+    def from_domain(cls, curve: AttentionCurve) -> AttentionCurveModel:
         return cls(peak=curve.peak, mu=curve.mu, sigma=curve.sigma)
 
     def to_domain(self) -> AttentionCurve:
@@ -385,7 +370,7 @@ class SiteSnapshot(BaseModel):
     controlling_faction: str | None = None
     attention_curve: AttentionCurveModel = Field(default_factory=AttentionCurveModel)
     settlement_id: str | None = None
-    connections: Dict[str, float] = Field(default_factory=dict)
+    connections: dict[str, float] = Field(default_factory=dict)
 
     @field_validator("controlling_faction", "settlement_id")
     @classmethod
@@ -396,12 +381,12 @@ class SiteSnapshot(BaseModel):
 
     @field_validator("connections", mode="before")
     @classmethod
-    def _normalise_connections(cls, value: object) -> Dict[str, float]:
+    def _normalise_connections(cls, value: object) -> dict[str, float]:
         if value in (None, {}):
             return {}
         if not isinstance(value, Mapping):
             raise TypeError("connections must be a mapping of site ids to costs")
-        normalised: Dict[str, float] = {}
+        normalised: dict[str, float] = {}
         for key, cost in value.items():
             name = str(key)
             cost_value = float(cost)
@@ -411,7 +396,7 @@ class SiteSnapshot(BaseModel):
         return normalised
 
     @classmethod
-    def from_site(cls, site: Site) -> "SiteSnapshot":
+    def from_site(cls, site: Site) -> SiteSnapshot:
         return cls(
             identifier=site.identifier,
             site_type=site.site_type,
@@ -444,9 +429,9 @@ class WorldSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     day: int = Field(ge=0)
-    chunks: List[ChunkSnapshot] = Field(default_factory=list)
-    sites: List[SiteSnapshot] = Field(default_factory=list)
-    world_state: Dict[str, object] = Field(default_factory=dict)
+    chunks: list[ChunkSnapshot] = Field(default_factory=list)
+    sites: list[SiteSnapshot] = Field(default_factory=list)
+    world_state: dict[str, object] = Field(default_factory=dict)
 
     @classmethod
     def from_components(
@@ -456,35 +441,31 @@ class WorldSnapshot(BaseModel):
         chunks: Iterable[MapChunk],
         sites: Mapping[str, Site] | None = None,
         world_state: Mapping[str, object] | None = None,
-    ) -> "WorldSnapshot":
+    ) -> WorldSnapshot:
         site_map: Mapping[str, Site] = sites or {}
         if not site_map and world_state:
             candidate = world_state.get("sites")
             if isinstance(candidate, SiteStateFrame):
                 site_map = candidate.as_mapping()
             elif isinstance(candidate, Mapping):
-                filtered: Dict[str, Site] = {}
+                filtered: dict[str, Site] = {}
                 for key, value in candidate.items():
                     if isinstance(key, str) and isinstance(value, Site):
                         filtered[key] = value
                 site_map = filtered
         chunk_models = [ChunkSnapshot.from_chunk(chunk) for chunk in chunks]
-        site_models = [
-            SiteSnapshot.from_site(site) for _, site in sorted(site_map.items())
-        ]
+        site_models = [SiteSnapshot.from_site(site) for _, site in sorted(site_map.items())]
         payload = WorldStatePayload.from_mapping(world_state)
         sanitized_state = payload.to_serializable_dict()
-        return cls(
-            day=day, chunks=chunk_models, sites=site_models, world_state=sanitized_state
-        )
+        return cls(day=day, chunks=chunk_models, sites=site_models, world_state=sanitized_state)
 
-    def to_chunks(self) -> List[MapChunk]:
+    def to_chunks(self) -> list[MapChunk]:
         return [chunk.to_chunk() for chunk in self.chunks]
 
-    def to_site_map(self) -> Dict[str, Site]:
+    def to_site_map(self) -> dict[str, Site]:
         return {site.identifier: site.to_site() for site in self.sites}
 
-    def to_world_state(self) -> Dict[str, object]:
+    def to_world_state(self) -> dict[str, object]:
         payload = WorldStatePayload.from_mapping(self.world_state)
         state = payload.to_state_dict()
         state["sites"] = SiteStateFrame.from_sites(self.to_site_map())
@@ -492,10 +473,8 @@ class WorldSnapshot(BaseModel):
 
     def metadata(
         self, *, summary: str | None = None, created_at: datetime | None = None
-    ) -> "WorldSnapshotMetadata":
-        return WorldSnapshotMetadata.from_snapshot(
-            self, summary=summary, created_at=created_at
-        )
+    ) -> WorldSnapshotMetadata:
+        return WorldSnapshotMetadata.from_snapshot(self, summary=summary, created_at=created_at)
 
 
 class WorldSnapshotMetadata(BaseModel):
@@ -506,7 +485,7 @@ class WorldSnapshotMetadata(BaseModel):
     day: int = Field(ge=0)
     chunk_count: int = Field(ge=0)
     site_count: int = Field(ge=0)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     summary: str | None = None
 
     @classmethod
@@ -516,10 +495,12 @@ class WorldSnapshotMetadata(BaseModel):
         *,
         summary: str | None = None,
         created_at: datetime | None = None,
-    ) -> "WorldSnapshotMetadata":
+    ) -> WorldSnapshotMetadata:
         if summary is None:
-            summary = f"Day {snapshot.day}: {len(snapshot.chunks)} chunks / {len(snapshot.sites)} sites"
-        timestamp = created_at or datetime.now(timezone.utc)
+            summary = (
+                f"Day {snapshot.day}: {len(snapshot.chunks)} chunks / {len(snapshot.sites)} sites"
+            )
+        timestamp = created_at or datetime.now(UTC)
         return cls(
             day=snapshot.day,
             chunk_count=len(snapshot.chunks),

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Mapping
 
 from ..crew import SkillCheckResult, SkillType
 
@@ -38,13 +38,13 @@ class AttentionCurve:
         if self.sigma <= 0:
             raise ValueError("sigma must be positive")
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         """Serialize the curve parameters into a mapping."""
 
         return {"peak": self.peak, "mu": self.mu, "sigma": self.sigma}
 
     @staticmethod
-    def from_dict(payload: Dict[str, float]) -> "AttentionCurve":
+    def from_dict(payload: dict[str, float]) -> AttentionCurve:
         """Create an :class:`AttentionCurve` instance from a mapping."""
 
         return AttentionCurve(
@@ -83,7 +83,7 @@ class RiskCurve:
         if self.floor > self.maximum:
             raise ValueError("floor cannot exceed maximum")
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         """Serialize the curve parameters into a mapping."""
 
         return {
@@ -94,7 +94,7 @@ class RiskCurve:
         }
 
     @staticmethod
-    def from_dict(payload: Mapping[str, float]) -> "RiskCurve":
+    def from_dict(payload: Mapping[str, float]) -> RiskCurve:
         """Create a :class:`RiskCurve` instance from a mapping."""
 
         def _get(key: str, fallback: float) -> float:
@@ -141,7 +141,7 @@ class Site:
     attention_curve: AttentionCurve = field(default_factory=AttentionCurve)
     risk_curve: RiskCurve = field(default_factory=RiskCurve)
     settlement_id: str | None = None
-    connections: Dict[str, float] = field(default_factory=dict)
+    connections: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.exploration_percent = self._clamp_percentage(self.exploration_percent)
@@ -167,9 +167,7 @@ class Site:
                 self.risk_curve = RiskCurve()  # type: ignore[assignment]
         if self.settlement_id is not None and not isinstance(self.settlement_id, str):
             raise TypeError("settlement_id must be a string or None")
-        self.connections = self._normalise_connections(
-            self.identifier, self.connections
-        )
+        self.connections = self._normalise_connections(self.identifier, self.connections)
 
     @staticmethod
     def _clamp_percentage(value: float) -> float:
@@ -180,16 +178,14 @@ class Site:
     def record_exploration(self, amount: float) -> None:
         """Increase the exploration percentage by ``amount``."""
 
-        self.exploration_percent = self._clamp_percentage(
-            self.exploration_percent + amount
-        )
+        self.exploration_percent = self._clamp_percentage(self.exploration_percent + amount)
 
     def record_scavenge(self, amount: float) -> None:
         """Increase the scavenged percentage by ``amount``."""
 
         self.scavenged_percent = self._clamp_percentage(self.scavenged_percent + amount)
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         """Serialize the site state into a JSON compatible mapping."""
 
         return {
@@ -206,7 +202,7 @@ class Site:
         }
 
     @staticmethod
-    def from_dict(payload: Dict[str, object]) -> "Site":
+    def from_dict(payload: dict[str, object]) -> Site:
         """Create a :class:`Site` from a serialized mapping."""
 
         attention_payload = payload.get("attention_curve", {})
@@ -227,11 +223,7 @@ class Site:
             risk_curve = risk_payload
         elif isinstance(risk_payload, Mapping):
             risk_curve = RiskCurve.from_dict(
-                {
-                    key: float(value)
-                    for key, value in risk_payload.items()
-                    if isinstance(key, str)
-                }
+                {key: float(value) for key, value in risk_payload.items() if isinstance(key, str)}
             )
         else:
             risk_curve = RiskCurve()
@@ -252,9 +244,7 @@ class Site:
             attention_curve=attention_curve,
             risk_curve=risk_curve,
             settlement_id=(
-                None
-                if payload.get("settlement_id") is None
-                else str(payload.get("settlement_id"))
+                None if payload.get("settlement_id") is None else str(payload.get("settlement_id"))
             ),
             connections=payload.get("connections", {}),
         )
@@ -279,12 +269,12 @@ class Site:
     @staticmethod
     def _normalise_connections(
         identifier: str, data: Mapping[str, float | int | str] | None
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         if not data:
             return {}
         if not isinstance(data, Mapping):
             raise TypeError("connections must be a mapping of site id to cost")
-        normalised: Dict[str, float] = {}
+        normalised: dict[str, float] = {}
         for neighbour, cost in data.items():
             key = str(neighbour)
             if not key:
@@ -304,9 +294,7 @@ class Site:
         """
 
         if result.skill != SkillType.SCAVENGING:
-            raise ValueError(
-                "resolve_scavenge_attempt requires a scavenging skill result"
-            )
+            raise ValueError("resolve_scavenge_attempt requires a scavenging skill result")
         base_progress = max(0.5, 4.0 + result.margin)
         intensity = max(0.05, self.attention_curve.value_at(self.scavenged_percent))
         progress = base_progress * intensity
@@ -318,18 +306,14 @@ class Site:
             self.population = max(0, self.population + morale_boost)
         return progress
 
-    def resolve_negotiation_attempt(
-        self, result: SkillCheckResult, faction: str
-    ) -> float:
+    def resolve_negotiation_attempt(self, result: SkillCheckResult, faction: str) -> float:
         """Apply the outcome of a negotiation attempt.
 
         Returns the change applied to the site's attention base.
         """
 
         if result.skill != SkillType.NEGOTIATION:
-            raise ValueError(
-                "resolve_negotiation_attempt requires a negotiation skill result"
-            )
+            raise ValueError("resolve_negotiation_attempt requires a negotiation skill result")
         sway = max(-5.0, min(5.0, result.margin / 2))
         curve = self.attention_curve
         influence = max(0.0, curve.value_at(self.exploration_percent))

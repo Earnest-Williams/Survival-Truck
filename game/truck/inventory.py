@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Iterable, Iterator, Mapping
 
 
 class InventoryCapacityError(ValueError):
@@ -32,7 +32,7 @@ class ItemCategory(str, Enum):
     OTHER = "other"
 
     @staticmethod
-    def from_value(value: "ItemCategory | str") -> "ItemCategory":
+    def from_value(value: ItemCategory | str) -> ItemCategory:
         """Return the matching category, defaulting to :attr:`OTHER`."""
 
         if isinstance(value, ItemCategory):
@@ -55,12 +55,10 @@ class SpoilageState:
     remaining_days: float
 
     @staticmethod
-    def fresh(duration_days: float) -> "SpoilageState":
+    def fresh(duration_days: float) -> SpoilageState:
         if duration_days <= 0:
             return SpoilageState(total_days=float(duration_days), remaining_days=0.0)
-        return SpoilageState(
-            total_days=float(duration_days), remaining_days=float(duration_days)
-        )
+        return SpoilageState(total_days=float(duration_days), remaining_days=float(duration_days))
 
     def advance(self, days: float) -> bool:
         """Advance spoilage and return ``True`` if state changed."""
@@ -77,10 +75,8 @@ class SpoilageState:
     def spoiled(self) -> bool:
         return self.remaining_days <= 0.0
 
-    def copy(self) -> "SpoilageState":
-        return SpoilageState(
-            total_days=self.total_days, remaining_days=self.remaining_days
-        )
+    def copy(self) -> SpoilageState:
+        return SpoilageState(total_days=self.total_days, remaining_days=self.remaining_days)
 
 
 @dataclass
@@ -96,7 +92,7 @@ class InventoryItem:
     base_value: float = 1.0
     spoilage: SpoilageState | None = None
 
-    def clone(self, *, quantity: float | None = None) -> "InventoryItem":
+    def clone(self, *, quantity: float | None = None) -> InventoryItem:
         """Return a copy optionally overriding the quantity."""
 
         return InventoryItem(
@@ -130,7 +126,7 @@ class Inventory:
     ) -> None:
         self.max_weight = float("inf") if max_weight is None else float(max_weight)
         self.max_volume = float("inf") if max_volume is None else float(max_volume)
-        self._items: Dict[str, InventoryItem] = {}
+        self._items: dict[str, InventoryItem] = {}
 
     # -- Introspection -------------------------------------------------
     def __iter__(self) -> Iterator[InventoryItem]:
@@ -148,8 +144,8 @@ class Inventory:
     def total_volume(self) -> float:
         return sum(item.total_volume for item in self._items.values())
 
-    def summary_by_category(self) -> Dict[str, float]:
-        summary: Dict[ItemCategory, float] = {}
+    def summary_by_category(self) -> dict[str, float]:
+        summary: dict[ItemCategory, float] = {}
         for item in self._items.values():
             summary[item.category] = summary.get(item.category, 0.0) + item.quantity
         return {category.value: amount for category, amount in summary.items()}
@@ -175,17 +171,10 @@ class Inventory:
             if max_volume < 0:
                 raise ValueError("max_volume cannot be negative")
             self.max_volume = float(max_volume)
-        if (
-            self.total_weight > self.max_weight + 1e-6
-            or self.total_volume > self.max_volume + 1e-6
-        ):
-            raise InventoryCapacityError(
-                "Existing cargo exceeds the new capacity limits"
-            )
+        if self.total_weight > self.max_weight + 1e-6 or self.total_volume > self.max_volume + 1e-6:
+            raise InventoryCapacityError("Existing cargo exceeds the new capacity limits")
 
-    def _ensure_capacity(
-        self, *, additional_weight: float, additional_volume: float
-    ) -> None:
+    def _ensure_capacity(self, *, additional_weight: float, additional_volume: float) -> None:
         new_weight = self.total_weight + additional_weight
         if new_weight > self.max_weight + 1e-6:
             raise InventoryCapacityError("Cargo weight would exceed capacity")
@@ -232,19 +221,15 @@ class Inventory:
             self._items.pop(item_id, None)
         return removed
 
-    def consume_category(
-        self, category: ItemCategory, quantity: float
-    ) -> Dict[str, float]:
+    def consume_category(self, category: ItemCategory, quantity: float) -> dict[str, float]:
         if quantity <= 0:
             return {}
         stacks = sorted(
             (item for item in self._items.values() if item.category == category),
-            key=lambda item: item.spoilage.remaining_days
-            if item.spoilage
-            else float("inf"),
+            key=lambda item: item.spoilage.remaining_days if item.spoilage else float("inf"),
         )
         remaining = float(quantity)
-        consumed: Dict[str, float] = {}
+        consumed: dict[str, float] = {}
         for stack in stacks:
             if remaining <= 1e-9:
                 break

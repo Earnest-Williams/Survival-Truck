@@ -17,13 +17,13 @@ from game.world.persistence import (
     create_world_engine,
     init_world_storage,
     iter_daily_diffs,
+    iter_season_snapshots,
     load_daily_diff,
     load_season_snapshot,
     load_world_config,
     store_daily_diff,
     store_season_snapshot,
     store_world_config,
-    iter_season_snapshots,
 )
 from game.world.rng import WorldRandomness
 from game.world.save_models import WorldSnapshot
@@ -78,9 +78,7 @@ def test_world_snapshot_round_trip() -> None:
         "randomness": object(),
         "sites": {site.identifier: site},
     }
-    snapshot = WorldSnapshot.from_components(
-        day=5, chunks=[chunk], world_state=world_state
-    )
+    snapshot = WorldSnapshot.from_components(day=5, chunks=[chunk], world_state=world_state)
     assert snapshot.day == 5
     assert "randomness" not in snapshot.world_state
     assert snapshot.world_state["notes"] == ["Arrived at camp"]
@@ -251,8 +249,7 @@ def test_site_risk_uses_logistic_profile() -> None:
     expected = site.risk_curve.maximum / (
         1.0
         + math.exp(
-            -site.risk_curve.growth_rate
-            * (site.scavenged_percent - site.risk_curve.midpoint)
+            -site.risk_curve.growth_rate * (site.scavenged_percent - site.risk_curve.midpoint)
         )
     )
     risk = site.risk_at()

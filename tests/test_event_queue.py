@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -53,9 +53,7 @@ def test_large_batch_preserves_order():
         queue.schedule(10, f"evt-{index}")
 
     popped = queue.pop_events_for_day(10)
-    assert [event.event_type for event in popped] == [
-        f"evt-{index}" for index in range(500)
-    ]
+    assert [event.event_type for event in popped] == [f"evt-{index}" for index in range(500)]
     assert not queue.has_events()
 
 

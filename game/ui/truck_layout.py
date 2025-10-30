@@ -52,9 +52,7 @@ class TruckLayoutView(Widget):
 
     truck: Reactive[Truck | None] = reactive(None, layout=True)
 
-    def __init__(
-        self, *, title: str = "Truck Layout", truck: Truck | None = None
-    ) -> None:
+    def __init__(self, *, title: str = "Truck Layout", truck: Truck | None = None) -> None:
         super().__init__(id="truck")
         self.title = title
         if truck is not None:

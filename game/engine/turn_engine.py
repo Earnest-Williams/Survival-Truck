@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Literal, Mapping, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from ..events.event_queue import EventQueue, QueuedEvent
 from ..time.season_tracker import SeasonProfile, SeasonTracker
@@ -13,7 +14,6 @@ from ..ui.channels import (
     NotificationRecord,
     TurnLogChannel,
 )
-
 from .resource_pipeline import ResourcePipeline
 from .world import (
     CrewAdvancementSystem,
@@ -31,7 +31,7 @@ if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
     from ..truck.models import TruckStats
 
 
-def compute_weight_power_factor(truck_stats: "TruckStats" | None) -> float:
+def compute_weight_power_factor(truck_stats: TruckStats | None) -> float:
     """Return the travel modifier derived from truck weight and power."""
 
     if truck_stats is None:
@@ -59,7 +59,7 @@ def compute_weight_power_factor(truck_stats: "TruckStats" | None) -> float:
     return max(0.25, min(factor, 4.0))
 
 
-CommandPayload = Dict[str, Any]
+CommandPayload = dict[str, Any]
 PhaseName = Literal["command", "travel", "site", "maintenance", "diplomacy", "faction"]
 PhaseHandler = Callable[["TurnContext"], None]
 
@@ -72,21 +72,21 @@ class TurnContext:
     season: SeasonProfile
     weather: WeatherCondition
     command: CommandPayload
-    events: List[QueuedEvent]
-    world_state: Dict[str, Any]
+    events: list[QueuedEvent]
+    world_state: dict[str, Any]
     world: GameWorld
-    _schedule_callback: Callable[[int, str, Dict[str, Any] | None], None]
+    _schedule_callback: Callable[[int, str, dict[str, Any] | None], None]
     log_channel: TurnLogChannel | None = None
     notification_channel: NotificationChannel | None = None
-    scheduled_events: List[QueuedEvent] = field(default_factory=list)
-    summary_lines: List[str] = field(default_factory=list)
-    notifications: List[NotificationRecord] = field(default_factory=list)
+    scheduled_events: list[QueuedEvent] = field(default_factory=list)
+    summary_lines: list[str] = field(default_factory=list)
+    notifications: list[NotificationRecord] = field(default_factory=list)
 
     def schedule_event_in(
         self,
         days_from_now: int,
         event_type: str,
-        payload: Dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> None:
         """Queue a new event relative to the current day."""
 
@@ -107,9 +107,7 @@ class TurnContext:
     def travel_modifier(self) -> float:
         """Combined travel modifier from seasonal and weather effects."""
 
-        return (
-            self.season.movement_cost_multiplier * self.weather.travel_cost_multiplier
-        )
+        return self.season.movement_cost_multiplier * self.weather.travel_cost_multiplier
 
     @property
     def travel_load_factor(self) -> float:
@@ -121,10 +119,7 @@ class TurnContext:
     def maintenance_modifier(self) -> float:
         """Combined maintenance modifier from seasonal and weather effects."""
 
-        return (
-            self.season.resource_cost_multiplier
-            * self.weather.maintenance_cost_multiplier
-        )
+        return self.season.resource_cost_multiplier * self.weather.maintenance_cost_multiplier
 
     def travel_cost_for(self, base_cost: float) -> float:
         """Apply travel modifiers to ``base_cost``."""
@@ -141,7 +136,7 @@ class TurnContext:
         message: str,
         *,
         category: str = "info",
-        payload: Dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> NotificationRecord:
         record = NotificationRecord(
             day=self.day,
@@ -155,7 +150,7 @@ class TurnContext:
         return record
 
     # ------------------------------------------------------------------
-    def _truck_stats(self) -> "TruckStats" | None:
+    def _truck_stats(self) -> TruckStats | None:
         component = self.world.get_singleton(TruckComponent)
         truck_obj: Any | None = None
         if component is not None:
@@ -174,7 +169,7 @@ class TurnContext:
 class TurnEngine:
     """Coordinates the core daily phases of the simulation."""
 
-    PHASE_ORDER: List[PhaseName] = [
+    PHASE_ORDER: list[PhaseName] = [
         "command",
         "travel",
         "site",
@@ -205,7 +200,7 @@ class TurnEngine:
             starting_day=self.season_tracker.current_day,
             starting_season=season.name,
         )
-        self._phase_handlers: Dict[PhaseName, List[PhaseHandler]] = {
+        self._phase_handlers: dict[PhaseName, list[PhaseHandler]] = {
             phase: [] for phase in self.PHASE_ORDER
         }
         # Ensure baseline simulation behaviours occur even if the caller does
@@ -223,7 +218,7 @@ class TurnEngine:
         self._phase_handlers[phase].append(handler)
 
     def run_turn(
-        self, command: CommandPayload, *, world_state: Dict[str, Any] | None = None
+        self, command: CommandPayload, *, world_state: dict[str, Any] | None = None
     ) -> TurnContext:
         """Run all phases for a single day."""
 
@@ -279,11 +274,9 @@ class TurnEngine:
                         payload={"waypoints": waypoint_list},
                     )
 
-        module_orders = (
-            command.get("module_orders") if isinstance(command, Mapping) else None
-        )
+        module_orders = command.get("module_orders") if isinstance(command, Mapping) else None
         if isinstance(module_orders, Iterable):
-            formatted_orders: List[str] = []
+            formatted_orders: list[str] = []
             for raw_order in module_orders:
                 if not isinstance(raw_order, Mapping):
                     continue
@@ -296,16 +289,12 @@ class TurnEngine:
                     payload={"action": action},
                 )
             if formatted_orders:
-                context.world_state.setdefault("module_orders", []).extend(
-                    formatted_orders
-                )
+                context.world_state.setdefault("module_orders", []).extend(formatted_orders)
                 context.log("Module orders: " + ", ".join(formatted_orders))
 
-        crew_actions = (
-            command.get("crew_actions") if isinstance(command, Mapping) else None
-        )
+        crew_actions = command.get("crew_actions") if isinstance(command, Mapping) else None
         if isinstance(crew_actions, Iterable):
-            assignments: List[str] = []
+            assignments: list[str] = []
             for raw_action in crew_actions:
                 if not isinstance(raw_action, Mapping):
                     continue
@@ -325,9 +314,7 @@ class TurnEngine:
                         payload={"participants": participants},
                     )
             if assignments:
-                context.world_state.setdefault("crew_assignments", []).extend(
-                    assignments
-                )
+                context.world_state.setdefault("crew_assignments", []).extend(assignments)
                 context.log("Crew assignments: " + "; ".join(assignments))
 
     def _default_travel_handler(self, context: TurnContext) -> None:
@@ -377,26 +364,21 @@ class TurnEngine:
         if self._notification_channel is not None:
             self._notification_channel.extend_from_events(context.day, context.events)
             if context.scheduled_events:
-                self._notification_channel.extend_from_schedule(
-                    context.scheduled_events
-                )
+                self._notification_channel.extend_from_schedule(context.scheduled_events)
 
     def _build_summary(self, context: TurnContext) -> str:
-        parts: List[str] = []
+        parts: list[str] = []
         if context.summary_lines:
             parts.extend(context.summary_lines)
         if context.events:
-            parts.append(
-                "Events: "
-                + ", ".join(f"{event.event_type}" for event in context.events)
-            )
+            parts.append("Events: " + ", ".join(f"{event.event_type}" for event in context.events))
         if context.scheduled_events:
             parts.append(f"Scheduled {len(context.scheduled_events)} future event(s)")
         return " | ".join(parts)
 
     # ------------------------------------------------------------------
     def _record_weather_state(
-        self, world_state: Dict[str, Any], weather: WeatherCondition, day: int
+        self, world_state: dict[str, Any], weather: WeatherCondition, day: int
     ) -> None:
         record = {
             "day": day,
@@ -446,8 +428,8 @@ class TurnEngine:
                     priority=100,
                 )
 
-    def _sync_world_bindings(self, world_state: Dict[str, Any]) -> None:
-        bindings: List[tuple[type, str, str]] = [
+    def _sync_world_bindings(self, world_state: dict[str, Any]) -> None:
+        bindings: list[tuple[type, str, str]] = [
             (TruckComponent, "truck", "truck"),
             (CrewComponent, "crew", "crew"),
             (FactionControllerComponent, "faction_controller", "controller"),

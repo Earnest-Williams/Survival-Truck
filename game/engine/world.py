@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
-    List,
     Protocol,
-    Type,
     TypeVar,
 )
 
@@ -24,7 +21,7 @@ else:  # pragma: no cover - fallback for stripped-down esper installs
 
         def __init__(self) -> None:
             self._next_entity = 0
-            self._components: Dict[int, Dict[Type[object], object]] = {}
+            self._components: dict[int, dict[type[object], object]] = {}
 
         def create_entity(self, *components: object) -> int:
             entity = self._next_entity
@@ -37,14 +34,14 @@ else:  # pragma: no cover - fallback for stripped-down esper installs
         def add_component(self, entity: int, component: object) -> None:
             self._components.setdefault(entity, {})[type(component)] = component
 
-        def has_component(self, entity: int, component_type: Type[object]) -> bool:
+        def has_component(self, entity: int, component_type: type[object]) -> bool:
             return component_type in self._components.get(entity, {})
 
-        def remove_component(self, entity: int, component_type: Type[object]) -> None:
+        def remove_component(self, entity: int, component_type: type[object]) -> None:
             if entity in self._components:
                 self._components[entity].pop(component_type, None)
 
-        def component_for_entity(self, entity: int, component_type: Type[T]) -> T:
+        def component_for_entity(self, entity: int, component_type: type[T]) -> T:
             try:
                 return self._components[entity][component_type]  # type: ignore[return-value]
             except KeyError as exc:  # pragma: no cover - defensive branch
@@ -95,7 +92,7 @@ class SitesComponent:
 class SystemCallback(Protocol):
     """Callable protocol describing a world system."""
 
-    def __call__(self, world: "GameWorld", context: "TurnContext") -> None:  # noqa: D401
+    def __call__(self, world: GameWorld, context: TurnContext) -> None:  # noqa: D401
         ...
 
 
@@ -111,8 +108,8 @@ class GameWorld:
 
     def __init__(self) -> None:
         self._world = EsperWorld()
-        self._singletons: Dict[Type[Any], int] = {}
-        self._systems: Dict[PhaseName, List[_SystemEntry]] = {}
+        self._singletons: dict[type[Any], int] = {}
+        self._systems: dict[PhaseName, list[_SystemEntry]] = {}
         self._system_counter = 0
 
     # ------------------------------------------------------------------
@@ -141,7 +138,7 @@ class GameWorld:
             self._world.add_component(entity, component)
         return entity
 
-    def get_singleton(self, component_type: Type[T]) -> T | None:
+    def get_singleton(self, component_type: type[T]) -> T | None:
         """Retrieve the singleton component for ``component_type`` if registered."""
 
         entity = self._singletons.get(component_type)
@@ -153,14 +150,12 @@ class GameWorld:
             self._singletons.pop(component_type, None)
             return None
 
-    def has_system_type(self, system_type: Type[object]) -> bool:
+    def has_system_type(self, system_type: type[object]) -> bool:
         """Return ``True`` if any registered system is an instance of ``system_type``."""
 
         for entries in self._systems.values():
             for entry in entries:
-                if isinstance(
-                    getattr(entry.callback, "__self__", entry.callback), system_type
-                ):
+                if isinstance(getattr(entry.callback, "__self__", entry.callback), system_type):
                     return True
                 if isinstance(entry.callback, system_type):
                     return True
@@ -176,22 +171,20 @@ class GameWorld:
     ) -> None:
         """Register ``system`` to execute during ``phase`` with ``priority`` ordering."""
 
-        if hasattr(system, "process") and callable(getattr(system, "process")):
-            callback = getattr(system, "process")  # type: ignore[assignment]
+        if hasattr(system, "process") and callable(system.process):
+            callback = system.process  # type: ignore[assignment]
         elif callable(system):
             callback = system  # type: ignore[assignment]
         else:  # pragma: no cover - defensive branch
             raise TypeError("system must be callable or expose a process() method")
 
         self._system_counter += 1
-        entry = _SystemEntry(
-            priority=priority, order=self._system_counter, callback=callback
-        )
+        entry = _SystemEntry(priority=priority, order=self._system_counter, callback=callback)
         phase_systems = self._systems.setdefault(phase, [])
         phase_systems.append(entry)
         phase_systems.sort(key=lambda item: (item.priority, item.order))
 
-    def process_phase(self, phase: PhaseName, context: "TurnContext") -> None:
+    def process_phase(self, phase: PhaseName, context: TurnContext) -> None:
         """Execute all systems registered for ``phase`` in priority order."""
 
         for entry in self._systems.get(phase, []):
@@ -209,7 +202,7 @@ class TruckMaintenanceSystem:
     """Apply daily maintenance actions to the truck component."""
 
     def process(
-        self, world: GameWorld, context: "TurnContext"
+        self, world: GameWorld, context: TurnContext
     ) -> None:  # pragma: no cover - runtime behaviour
         truck_component = world.get_singleton(TruckComponent)
         if truck_component is None:
@@ -234,7 +227,7 @@ class CrewAdvancementSystem:
         self.decay_modifier = decay_modifier
 
     def process(
-        self, world: GameWorld, context: "TurnContext"
+        self, world: GameWorld, context: TurnContext
     ) -> None:  # pragma: no cover - runtime behaviour
         crew_component = world.get_singleton(CrewComponent)
         if crew_component is None:
@@ -246,21 +239,19 @@ class FactionAISystem:
     """Delegate faction behaviour to the registered AI controller."""
 
     def process(
-        self, world: GameWorld, context: "TurnContext"
+        self, world: GameWorld, context: TurnContext
     ) -> None:  # pragma: no cover - runtime behaviour
         faction_component = world.get_singleton(FactionControllerComponent)
         if faction_component is None:
             return
-        faction_component.controller.run_turn(
-            world_state=context.world_state, day=context.day
-        )
+        faction_component.controller.run_turn(world_state=context.world_state, day=context.day)
 
 
 class DiplomacySystem:
     """Apply global diplomacy updates separate from faction AI turns."""
 
     def process(
-        self, world: GameWorld, context: "TurnContext"
+        self, world: GameWorld, context: TurnContext
     ) -> None:  # pragma: no cover - runtime behaviour
         faction_component = world.get_singleton(FactionControllerComponent)
         if faction_component is None:

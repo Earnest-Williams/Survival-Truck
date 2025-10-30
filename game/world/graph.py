@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from itertools import combinations
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Iterable,
-    Mapping,
-    MutableMapping,
-    Sequence,
     TypeAlias,
     cast,
 )
@@ -53,9 +49,7 @@ def build_site_movement_graph(
     cost_fn = _resolve_cost_function(terrain_costs, default_cost)
 
     if connections is None:
-        for (site_a, coord_a), (site_b, coord_b) in combinations(
-            site_positions.items(), 2
-        ):
+        for (site_a, coord_a), (site_b, coord_b) in combinations(site_positions.items(), 2):
             if coord_a.distance_to(coord_b) != 1:
                 continue
             _add_edge_with_cost(graph, site_a, coord_a, site_b, coord_b, cost_fn)
@@ -69,15 +63,11 @@ def build_site_movement_graph(
             if neighbor not in site_positions:
                 continue
             coord_neighbor = site_positions[neighbor]
-            _add_edge_with_cost(
-                graph, origin, coord_origin, neighbor, coord_neighbor, cost_fn
-            )
+            _add_edge_with_cost(graph, origin, coord_origin, neighbor, coord_neighbor, cost_fn)
     return graph
 
 
-def shortest_path_between_sites(
-    graph: WorldGraph, start: str, goal: str
-) -> Sequence[str]:
+def shortest_path_between_sites(graph: WorldGraph, start: str, goal: str) -> Sequence[str]:
     """Return the lowest-cost path between ``start`` and ``goal`` using A* search."""
 
     if start == goal:
@@ -99,7 +89,7 @@ def path_travel_cost(graph: WorldGraph, path: Sequence[str]) -> float:
     if len(path) < 2:
         return 0.0
     total = 0.0
-    for origin, destination in zip(path, path[1:]):
+    for origin, destination in zip(path, path[1:], strict=False):
         data = graph.get_edge_data(origin, destination) or {}
         total += float(data.get("weight", 0.0))
     return total
@@ -137,9 +127,7 @@ def relationship(
     return float(default)
 
 
-def allied_factions(
-    graph: WorldGraph, faction: str, threshold: float = 15.0
-) -> list[str]:
+def allied_factions(graph: WorldGraph, faction: str, threshold: float = 15.0) -> list[str]:
     """Return factions considered allied to ``faction`` according to ``threshold``."""
 
     allies: list[str] = []
@@ -154,9 +142,7 @@ def allied_factions(
     return allies
 
 
-def hostile_factions(
-    graph: WorldGraph, faction: str, threshold: float = -15.0
-) -> list[str]:
+def hostile_factions(graph: WorldGraph, faction: str, threshold: float = -15.0) -> list[str]:
     """Return factions considered hostile to ``faction`` according to ``threshold``."""
 
     hostiles: list[str] = []
@@ -184,7 +170,7 @@ def _add_edge_with_cost(
         weight = 0.0
     else:
         weight = 0.0
-        for origin, destination in zip(path, path[1:]):
+        for origin, destination in zip(path, path[1:], strict=False):
             weight += (cost_fn(origin) + cost_fn(destination)) * 0.5
     if graph.has_edge(site_a, site_b):
         existing = graph.edges[site_a, site_b].get("weight", weight)

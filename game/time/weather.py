@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
-from typing import Iterable, List, Mapping, MutableMapping, Sequence, Tuple
 
 from numpy.random import Generator, default_rng
 
@@ -24,9 +24,7 @@ class WeatherSystem:
     def __init__(
         self,
         *,
-        seasonal_tables: Mapping[
-            str, Sequence[WeatherCondition | Tuple[WeatherCondition, float]]
-        ]
+        seasonal_tables: Mapping[str, Sequence[WeatherCondition | tuple[WeatherCondition, float]]]
         | None = None,
         rng: Generator | None = None,
         starting_day: int = 0,
@@ -36,7 +34,7 @@ class WeatherSystem:
             raise ValueError("starting_day must be non-negative")
 
         self._rng: Generator = rng or default_rng()
-        self._tables: MutableMapping[str, List[Tuple[WeatherCondition, float]]] = {}
+        self._tables: MutableMapping[str, list[tuple[WeatherCondition, float]]] = {}
         self._totals: MutableMapping[str, float] = {}
         self._current_day = starting_day
 
@@ -56,7 +54,7 @@ class WeatherSystem:
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _default_tables() -> Mapping[str, Sequence[Tuple[WeatherCondition, float]]]:
+    def _default_tables() -> Mapping[str, Sequence[tuple[WeatherCondition, float]]]:
         clear = WeatherCondition(
             "clear", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0
         )
@@ -79,9 +77,9 @@ class WeatherSystem:
         }
 
     def _normalize_entries(
-        self, entries: Sequence[WeatherCondition | Tuple[WeatherCondition, float]]
-    ) -> List[Tuple[WeatherCondition, float]]:
-        normalized: List[Tuple[WeatherCondition, float]] = []
+        self, entries: Sequence[WeatherCondition | tuple[WeatherCondition, float]]
+    ) -> list[tuple[WeatherCondition, float]]:
+        normalized: list[tuple[WeatherCondition, float]] = []
         for entry in entries:
             if isinstance(entry, WeatherCondition):
                 condition, weight = entry, 1.0
@@ -91,9 +89,7 @@ class WeatherSystem:
                 continue
             normalized.append((condition, float(weight)))
         if not normalized:
-            raise ValueError(
-                "weather table must contain at least one positive-weight condition"
-            )
+            raise ValueError("weather table must contain at least one positive-weight condition")
         return normalized
 
     def _resolve_table_key(self, season: str | None) -> str:

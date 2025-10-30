@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
 
 
 @dataclass(frozen=True)
@@ -26,7 +25,7 @@ class SeasonTracker:
     def __init__(
         self,
         *,
-        seasons: Dict[int, SeasonProfile] | None = None,
+        seasons: dict[int, SeasonProfile] | None = None,
         days_per_season: int = 30,
         starting_day: int = 0,
     ) -> None:
@@ -38,20 +37,12 @@ class SeasonTracker:
         self._seasons = seasons or self._default_season_cycle()
 
     @staticmethod
-    def _default_season_cycle() -> Dict[int, SeasonProfile]:
+    def _default_season_cycle() -> dict[int, SeasonProfile]:
         return {
-            0: SeasonProfile(
-                "spring", movement_cost_multiplier=0.95, resource_cost_multiplier=1.0
-            ),
-            1: SeasonProfile(
-                "summer", movement_cost_multiplier=0.9, resource_cost_multiplier=0.95
-            ),
-            2: SeasonProfile(
-                "autumn", movement_cost_multiplier=1.0, resource_cost_multiplier=1.05
-            ),
-            3: SeasonProfile(
-                "winter", movement_cost_multiplier=1.2, resource_cost_multiplier=1.15
-            ),
+            0: SeasonProfile("spring", movement_cost_multiplier=0.95, resource_cost_multiplier=1.0),
+            1: SeasonProfile("summer", movement_cost_multiplier=0.9, resource_cost_multiplier=0.95),
+            2: SeasonProfile("autumn", movement_cost_multiplier=1.0, resource_cost_multiplier=1.05),
+            3: SeasonProfile("winter", movement_cost_multiplier=1.2, resource_cost_multiplier=1.15),
         }
 
     def advance_day(self) -> None:

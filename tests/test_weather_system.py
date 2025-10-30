@@ -11,12 +11,12 @@ from game.engine.turn_engine import (  # noqa: E402
     TurnEngine,
     compute_weight_power_factor,
 )
+from game.engine.world import TruckComponent  # noqa: E402
 from game.events.event_queue import EventQueue  # noqa: E402
 from game.time.season_tracker import SeasonTracker  # noqa: E402
 from game.time.weather import WeatherCondition, WeatherSystem  # noqa: E402
 from game.truck.inventory import Inventory, InventoryItem, ItemCategory  # noqa: E402
 from game.truck.models import Dimensions, Truck  # noqa: E402
-from game.engine.world import TruckComponent  # noqa: E402
 
 
 def test_weather_system_respects_season_tables():
@@ -41,12 +41,8 @@ def test_weather_system_respects_season_tables():
 def test_turn_engine_records_weather_and_modifiers():
     queue = EventQueue()
     tracker = SeasonTracker(days_per_season=1)
-    clear = WeatherCondition(
-        "clear", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0
-    )
-    storm = WeatherCondition(
-        "storm", travel_cost_multiplier=1.5, maintenance_cost_multiplier=1.2
-    )
+    clear = WeatherCondition("clear", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0)
+    storm = WeatherCondition("storm", travel_cost_multiplier=1.5, maintenance_cost_multiplier=1.2)
     weather_system = WeatherSystem(
         seasonal_tables={
             "default": ((clear, 1.0),),
@@ -78,12 +74,8 @@ def test_turn_engine_records_weather_and_modifiers():
     weather_entry = context.world_state["weather"]
     assert weather_entry["day"] == 0
     assert weather_entry["condition"] == "clear"
-    assert weather_entry["travel_modifier"] == pytest.approx(
-        clear.travel_cost_multiplier
-    )
-    assert weather_entry["maintenance_modifier"] == pytest.approx(
-        clear.maintenance_cost_multiplier
-    )
+    assert weather_entry["travel_modifier"] == pytest.approx(clear.travel_cost_multiplier)
+    assert weather_entry["maintenance_modifier"] == pytest.approx(clear.maintenance_cost_multiplier)
     assert context.world_state["weather_history"][0]["condition"] == "clear"
 
     assert engine.weather_system.current_day == 1
@@ -108,9 +100,7 @@ def test_turn_engine_records_weather_and_modifiers():
 def test_travel_phase_applies_weather_modifier():
     queue = EventQueue()
     tracker = SeasonTracker(days_per_season=10)
-    windy = WeatherCondition(
-        "windy", travel_cost_multiplier=1.4, maintenance_cost_multiplier=1.0
-    )
+    windy = WeatherCondition("windy", travel_cost_multiplier=1.4, maintenance_cost_multiplier=1.0)
     weather_system = WeatherSystem(
         seasonal_tables={
             tracker.current_season.name: ((windy, 1.0),),
@@ -143,9 +133,7 @@ def test_travel_phase_applies_weather_modifier():
 def test_travel_cost_reflects_weight_and_power():
     queue = EventQueue()
     tracker = SeasonTracker(days_per_season=10)
-    calm = WeatherCondition(
-        "calm", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0
-    )
+    calm = WeatherCondition("calm", travel_cost_multiplier=1.0, maintenance_cost_multiplier=1.0)
     weather_system = WeatherSystem(
         seasonal_tables={
             tracker.current_season.name: ((calm, 1.0),),
@@ -169,9 +157,7 @@ def test_travel_cost_reflects_weight_and_power():
         base_storage_capacity=120,
         base_weight_capacity=2800.0,
     )
-    truck.inventory = Inventory(
-        max_weight=truck.weight_capacity, max_volume=truck.storage_capacity
-    )
+    truck.inventory = Inventory(max_weight=truck.weight_capacity, max_volume=truck.storage_capacity)
     truck.inventory.add_item(
         InventoryItem(
             item_id="steel",
@@ -235,9 +221,7 @@ def test_maintenance_modifier_increases_required_effort():
     report = reports[0]
     assert report.cost_multiplier == pytest.approx(context.maintenance_modifier)
     assert report.maintenance_applied == pytest.approx(12.0)
-    assert report.maintenance_required == pytest.approx(
-        12.0 * context.maintenance_modifier
-    )
+    assert report.maintenance_required == pytest.approx(12.0 * context.maintenance_modifier)
     assert report.shortfall == pytest.approx(
         report.maintenance_required - report.maintenance_applied
     )

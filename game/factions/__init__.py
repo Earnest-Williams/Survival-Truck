@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Tuple
 
 from .state import CaravanRecord, FactionLedger, FactionRecord
 
@@ -33,9 +34,9 @@ class FactionDiplomacy:
     min_value: float = -100.0
     max_value: float = 100.0
     daily_decay: float = 0.2
-    _relations: Dict[Tuple[str, str], float] = field(init=False, default_factory=dict)
+    _relations: dict[tuple[str, str], float] = field(init=False, default_factory=dict)
 
-    def _key(self, faction_a: str, faction_b: str) -> Tuple[str, str]:
+    def _key(self, faction_a: str, faction_b: str) -> tuple[str, str]:
         if faction_a == faction_b:
             return (faction_a, faction_b)
         return tuple(sorted((faction_a, faction_b)))
@@ -64,7 +65,7 @@ class FactionDiplomacy:
     def decay(self) -> None:
         """Drift all standings towards neutral."""
 
-        to_remove: list[Tuple[str, str]] = []
+        to_remove: list[tuple[str, str]] = []
         for key, value in list(self._relations.items()):
             if key[0] == key[1]:
                 continue
@@ -77,7 +78,7 @@ class FactionDiplomacy:
         for key in to_remove:
             self._relations.pop(key, None)
 
-    def hostile_pairs(self, threshold: float = -25.0) -> Iterator[Tuple[str, str]]:
+    def hostile_pairs(self, threshold: float = -25.0) -> Iterator[tuple[str, str]]:
         for (a, b), value in self._relations.items():
             if a == b:
                 continue
@@ -91,9 +92,7 @@ class FactionDiplomacy:
 
         from ..world.graph import build_diplomacy_graph
 
-        return build_diplomacy_graph(
-            factions, self._relations, neutral_value=self.neutral_value
-        )
+        return build_diplomacy_graph(factions, self._relations, neutral_value=self.neutral_value)
 
 
 def __getattr__(name: str) -> Any:

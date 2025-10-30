@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping, Sequence
 from dataclasses import dataclass
-from typing import Dict, List, MutableMapping, Sequence
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -11,8 +11,8 @@ from textual.containers import Container
 from textual.widgets import Footer, Header
 
 from ..crew import Crew
-from ..engine.turn_engine import TurnContext, TurnEngine
 from ..engine.resource_pipeline import ResourcePipeline
+from ..engine.turn_engine import TurnContext, TurnEngine
 from ..engine.world import (
     CrewComponent,
     FactionControllerComponent,
@@ -112,7 +112,7 @@ class SurvivalTruckApp(App):
 
         if config is None:
             config = self._create_demo_config()
-        self._map_data: List[List[str]] = [list(row) for row in config.map_data]
+        self._map_data: list[list[str]] = [list(row) for row in config.map_data]
         self.world_state: MutableMapping[str, object] = config.world_state
         self.world_randomness = WorldRandomness(seed=config.world_seed)
         self.world_state.setdefault("randomness", self.world_randomness)
@@ -125,9 +125,7 @@ class SurvivalTruckApp(App):
         self.turn_engine = turn_engine or TurnEngine(
             season_tracker=self.season_tracker,
             event_queue=self.event_queue,
-            resource_pipeline=ResourcePipeline(
-                rng=self.world_randomness.generator("resources")
-            ),
+            resource_pipeline=ResourcePipeline(rng=self.world_randomness.generator("resources")),
             log_channel=self.log_channel,
             notification_channel=self.notification_channel,
             world=self.world,
@@ -182,7 +180,7 @@ class SurvivalTruckApp(App):
         if isinstance(sites_obj, SiteStateFrame):
             site_state = sites_obj
         elif isinstance(sites_obj, MutableMapping):
-            filtered: Dict[str, Site] = {}
+            filtered: dict[str, Site] = {}
             for key, value in sites_obj.items():
                 if isinstance(key, str) and isinstance(value, Site):
                     filtered[key] = value
@@ -204,9 +202,7 @@ class SurvivalTruckApp(App):
         self.control_widget.refresh_from_panel()
 
     # ------------------------------------------------------------------
-    def on_hex_map_view_coordinate_selected(
-        self, message: HexMapView.CoordinateSelected
-    ) -> None:
+    def on_hex_map_view_coordinate_selected(self, message: HexMapView.CoordinateSelected) -> None:
         selection = message.selection
         waypoint = f"{selection.coordinate[0]},{selection.coordinate[1]}"
         self.control_panel.append_waypoint(waypoint)
@@ -214,17 +210,13 @@ class SurvivalTruckApp(App):
         self.dashboard.set_focus_detail(f"{waypoint} ({selection.terrain})")
         self._update_map_highlights()
 
-    def on_control_panel_widget_plan_reset(
-        self, message: ControlPanelWidget.PlanReset
-    ) -> None:  # noqa: D401 - Textual hook
+    def on_control_panel_widget_plan_reset(self, message: ControlPanelWidget.PlanReset) -> None:  # noqa: D401 - Textual hook
         """React to plan resets triggered from the control panel widget."""
 
         self._update_map_highlights()
         self.dashboard.set_focus_detail(None)
 
-    def on_control_panel_widget_plan_updated(
-        self, message: ControlPanelWidget.PlanUpdated
-    ) -> None:  # noqa: D401
+    def on_control_panel_widget_plan_updated(self, message: ControlPanelWidget.PlanUpdated) -> None:  # noqa: D401
         """Refresh map annotations when the control panel changes."""
 
         self._update_map_highlights()
@@ -263,7 +255,7 @@ class SurvivalTruckApp(App):
         self.control_widget.refresh_from_panel()
 
     def _update_map_highlights(self) -> None:
-        highlights: Dict[tuple[int, int], str] = {}
+        highlights: dict[tuple[int, int], str] = {}
         for index, waypoint in enumerate(self.control_panel.route_waypoints):
             try:
                 row_str, col_str = waypoint.split(",", 1)
@@ -274,8 +266,8 @@ class SurvivalTruckApp(App):
             highlights[coord] = label
         self.map_view.set_highlights(highlights)
 
-    def _build_stats(self, context: TurnContext | None) -> Dict[str, str]:
-        stats: Dict[str, str] = {
+    def _build_stats(self, context: TurnContext | None) -> dict[str, str]:
+        stats: dict[str, str] = {
             "Day": str(self.season_tracker.current_day),
             "Season": self.season_tracker.current_season.name.title(),
         }
@@ -307,9 +299,9 @@ class SurvivalTruckApp(App):
         noise = BiomeNoise(randomness=randomness)
         center = HexCoord(0, 0)
         half = size // 2
-        grid: List[List[str]] = []
+        grid: list[list[str]] = []
         for r in range(-half, half + 1):
-            row: List[str] = []
+            row: list[str] = []
             for q in range(-half, half + 1):
                 coord = HexCoord(center.q + q, center.r + r)
                 biome = noise.biome(coord)

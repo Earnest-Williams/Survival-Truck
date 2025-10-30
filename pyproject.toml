@@ -38,10 +38,16 @@ msgpack = "^1.0.8"
 zstandard = "^0.23.0"
 platformdirs = "^4.3.6"
 polars = "^1.9.0"
+anyio = "^4.6.0"
+"backports.tarfile" = { version = "*", markers = "python_version < '3.12'" }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
 pytest-cov = "^5.0.0"
+ruff = "^0.6.9"
+mypy = "^1.12.0"
+types-setuptools = "^75.6.0.20241025"
+types-PyYAML = "^6.0.12.20240917"
 
 [tool.poetry.scripts]
 survival-truck = "game.__main__:main"
@@ -49,3 +55,45 @@ survival-truck = "game.__main__:main"
 [build-system]
 requires = ["poetry-core>=1.9.0"]
 build-backend = "poetry.core.masonry.api"
+
+# --------------------
+# Tooling configuration
+# --------------------
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "PL", "ANN"]
+ignore = ["ANN101", "ANN102"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["game"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+no_implicit_optional = true
+disallow_any_generics = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+  "textual.*",
+  "rich.*",
+  "pytest",
+  "opensimplex",
+  "sqlalchemy.*",
+  "sqlmodel.*",
+  "networkx.*",
+  "anyio",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

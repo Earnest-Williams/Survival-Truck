@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
-    Callable,
     ClassVar,
     Dict,
-    Iterator,
-    Mapping,
-    MutableMapping,
     Tuple,
 )
 
@@ -44,13 +41,13 @@ class HexCoord:
     def s(self) -> int:
         return -self.q - self.r
 
-    def translate(self, dq: int, dr: int) -> "HexCoord":
+    def translate(self, dq: int, dr: int) -> HexCoord:
         return HexCoord(self.q + dq, self.r + dr)
 
-    def distance_to(self, other: "HexCoord") -> int:
+    def distance_to(self, other: HexCoord) -> int:
         return max(abs(self.q - other.q), abs(self.r - other.r), abs(self.s - other.s))
 
-    DIRECTIONS: ClassVar[Tuple[Tuple[int, int], ...]] = (
+    DIRECTIONS: ClassVar[tuple[tuple[int, int], ...]] = (
         (1, 0),
         (1, -1),
         (0, -1),
@@ -59,16 +56,16 @@ class HexCoord:
         (0, 1),
     )
 
-    def neighbor(self, index: int) -> "HexCoord":
+    def neighbor(self, index: int) -> HexCoord:
         direction = self.DIRECTIONS[index % 6]
         return self.translate(*direction)
 
-    def to_chunk(self, chunk_size: int) -> "ChunkCoord":
+    def to_chunk(self, chunk_size: int) -> ChunkCoord:
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         return ChunkCoord(self.q // chunk_size, self.r // chunk_size)
 
-    def offset_within(self, chunk_size: int) -> Tuple[int, int]:
+    def offset_within(self, chunk_size: int) -> tuple[int, int]:
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         return self.q % chunk_size, self.r % chunk_size
@@ -81,7 +78,7 @@ class ChunkCoord:
     q: int
     r: int
 
-    def neighbors(self) -> Iterator["ChunkCoord"]:
+    def neighbors(self) -> Iterator[ChunkCoord]:
         for dq, dr in HexCoord.DIRECTIONS:  # type: ignore[attr-defined]
             yield ChunkCoord(self.q + dq, self.r + dr)
 
@@ -92,7 +89,7 @@ class MapChunk:
 
     coord: ChunkCoord
     chunk_size: int
-    biomes: MutableMapping[Tuple[int, int], BiomeType] = field(default_factory=dict)
+    biomes: MutableMapping[tuple[int, int], BiomeType] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.chunk_size <= 0:
@@ -109,7 +106,7 @@ class MapChunk:
     def set_biome(self, local_q: int, local_r: int, biome: BiomeType) -> None:
         self.biomes[(local_q, local_r)] = biome
 
-    def tiles(self) -> Iterator[Tuple[HexCoord, BiomeType]]:
+    def tiles(self) -> Iterator[tuple[HexCoord, BiomeType]]:
         for (local_q, local_r), biome in self.biomes.items():
             yield self.global_coord(local_q, local_r), biome
 
@@ -134,9 +131,7 @@ class BiomeNoise:
         self._frequency = frequency
 
     def value(self, coord: HexCoord) -> float:
-        sample = self._noise.noise2(
-            coord.q * self._frequency, coord.r * self._frequency
-        )
+        sample = self._noise.noise2(coord.q * self._frequency, coord.r * self._frequency)
         return 0.5 + 0.5 * sample
 
     def biome(self, coord: HexCoord) -> BiomeType:
@@ -181,7 +176,7 @@ class ChunkStreamer:
             raise ValueError("chunk_size must be positive")
         self.chunk_size = chunk_size
         self._loader = loader
-        self._loaded: Dict[ChunkCoord, MapChunk] = {}
+        self._loaded: dict[ChunkCoord, MapChunk] = {}
 
     @property
     def loaded_chunks(self) -> Mapping[ChunkCoord, MapChunk]:
@@ -194,7 +189,7 @@ class ChunkStreamer:
         if radius < 0:
             raise ValueError("radius must be non-negative")
         center_chunk = center.to_chunk(self.chunk_size)
-        desired: Dict[ChunkCoord, None] = {}
+        desired: dict[ChunkCoord, None] = {}
         for dq in range(-radius, radius + 1):
             for dr in range(-radius, radius + 1):
                 coord = ChunkCoord(center_chunk.q + dq, center_chunk.r + dr)
@@ -205,7 +200,7 @@ class ChunkStreamer:
             if coord not in desired:
                 del self._loaded[coord]
 
-    def tiles(self) -> Iterator[Tuple[HexCoord, BiomeType]]:
+    def tiles(self) -> Iterator[tuple[HexCoord, BiomeType]]:
         for chunk in self._loaded.values():
             yield from chunk.tiles()
 
@@ -214,20 +209,18 @@ class ChunkStreamer:
 class SiteNetwork:
     """Generated site placements and their connectivity graph."""
 
-    sites: Dict[str, "Site"]
-    positions: Dict[str, HexCoord]
-    connections: Dict[str, Dict[str, float]]
+    sites: dict[str, Site]
+    positions: dict[str, HexCoord]
+    connections: dict[str, dict[str, float]]
 
-    def to_world_state(self) -> Dict[str, object]:
+    def to_world_state(self) -> dict[str, object]:
         """Return a mapping ready to merge into persistent world state."""
 
         position_payload = {
-            identifier: {"q": coord.q, "r": coord.r}
-            for identifier, coord in self.positions.items()
+            identifier: {"q": coord.q, "r": coord.r} for identifier, coord in self.positions.items()
         }
         connection_payload = {
-            identifier: dict(neighbours)
-            for identifier, neighbours in self.connections.items()
+            identifier: dict(neighbours) for identifier, neighbours in self.connections.items()
         }
         return {
             "sites": self.sites,
@@ -254,7 +247,7 @@ def generate_site_network(
     center = center or HexCoord(0, 0)
     rng = randomness.generator("site-network")
 
-    positions: Dict[str, HexCoord] = {}
+    positions: dict[str, HexCoord] = {}
     occupied: set[tuple[int, int]] = set()
     attempts = 0
     max_attempts = max(32, site_count * 20)
@@ -273,13 +266,11 @@ def generate_site_network(
         positions[identifier] = coord
         occupied.add(key)
     if len(positions) < site_count:
-        raise RuntimeError(
-            "failed to place the requested number of sites within radius"
-        )
+        raise RuntimeError("failed to place the requested number of sites within radius")
 
     from ..sites import AttentionCurve, Site, SiteType
 
-    site_type_weights: Dict[SiteType, float] = {
+    site_type_weights: dict[SiteType, float] = {
         SiteType.CITY: 0.18,
         SiteType.FARM: 0.26,
         SiteType.POWER_PLANT: 0.12,
@@ -288,7 +279,7 @@ def generate_site_network(
         SiteType.MILITARY_RUINS: 0.14,
     }
 
-    attention_profiles: Dict[SiteType, tuple[float, float, float]] = {
+    attention_profiles: dict[SiteType, tuple[float, float, float]] = {
         SiteType.CITY: (2.4, 40.0, 16.0),
         SiteType.FARM: (1.8, 28.0, 12.0),
         SiteType.POWER_PLANT: (2.0, 32.0, 14.0),
@@ -297,7 +288,7 @@ def generate_site_network(
         SiteType.MILITARY_RUINS: (2.2, 35.0, 13.0),
     }
 
-    population_ranges: Dict[SiteType, tuple[int, int]] = {
+    population_ranges: dict[SiteType, tuple[int, int]] = {
         SiteType.CITY: (500, 2500),
         SiteType.FARM: (80, 400),
         SiteType.POWER_PLANT: (40, 200),
@@ -310,7 +301,7 @@ def generate_site_network(
     type_choices = list(site_type_weights.keys())
     probabilities = [weight / weights_total for weight in site_type_weights.values()]
 
-    sites: Dict[str, Site] = {}
+    sites: dict[str, Site] = {}
     for identifier in positions:
         choice_index = int(rng.choice(len(type_choices), p=probabilities))
         site_type: SiteType = type_choices[choice_index]
@@ -333,9 +324,7 @@ def generate_site_network(
             attention_curve=curve,
         )
 
-    connections: Dict[str, Dict[str, float]] = {
-        identifier: {} for identifier in positions
-    }
+    connections: dict[str, dict[str, float]] = {identifier: {} for identifier in positions}
     for identifier, origin in positions.items():
         neighbours = [
             (other_id, origin.distance_to(target))
@@ -359,9 +348,7 @@ def generate_site_network(
         for identifier, neighbours in connections.items()
     }
 
-    return SiteNetwork(
-        sites=sites, positions=positions, connections=ordered_connections
-    )
+    return SiteNetwork(sites=sites, positions=positions, connections=ordered_connections)
 
 
 __all__ = [

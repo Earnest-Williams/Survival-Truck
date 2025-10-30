@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 from ..events.event_queue import QueuedEvent
-
 
 if TYPE_CHECKING:
     from ..engine.turn_engine import TurnContext
@@ -18,9 +18,9 @@ class LogEntry:
 
     day: int
     summary: str
-    highlights: List[str] = field(default_factory=list)
-    events: List[str] = field(default_factory=list)
-    scheduled: List[str] = field(default_factory=list)
+    highlights: list[str] = field(default_factory=list)
+    events: list[str] = field(default_factory=list)
+    scheduled: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -30,7 +30,7 @@ class NotificationRecord:
     day: int
     message: str
     category: str = "info"
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
 
     def format_brief(self) -> str:
         payload_bits = [f"{key}={value}" for key, value in self.payload.items()]
@@ -43,7 +43,7 @@ class TurnLogChannel:
 
     def __init__(self, *, max_entries: int = 100) -> None:
         self.max_entries = max_entries
-        self._entries: List[LogEntry] = []
+        self._entries: list[LogEntry] = []
 
     @property
     def entries(self) -> Sequence[LogEntry]:
@@ -54,21 +54,13 @@ class TurnLogChannel:
         if len(self._entries) > self.max_entries:
             self._entries = self._entries[-self.max_entries :]
 
-    def record_context(
-        self, context: "TurnContext", *, summary: str | None = None
-    ) -> LogEntry:
+    def record_context(self, context: TurnContext, *, summary: str | None = None) -> LogEntry:
         """Create a log entry from the provided turn context."""
 
         summary_text = summary or _build_default_summary(context)
-        highlights = (
-            list(context.summary_lines)
-            if getattr(context, "summary_lines", None)
-            else []
-        )
+        highlights = list(context.summary_lines) if getattr(context, "summary_lines", None) else []
         events = [_format_event_line(event) for event in context.events]
-        scheduled = [
-            _format_scheduled_line(event) for event in context.scheduled_events
-        ]
+        scheduled = [_format_scheduled_line(event) for event in context.scheduled_events]
         entry = LogEntry(
             day=context.day,
             summary=summary_text,
@@ -107,7 +99,7 @@ class NotificationChannel:
 
     def __init__(self, *, max_entries: int = 200) -> None:
         self.max_entries = max_entries
-        self._notifications: List[NotificationRecord] = []
+        self._notifications: list[NotificationRecord] = []
 
     @property
     def notifications(self) -> Sequence[NotificationRecord]:
@@ -135,9 +127,7 @@ class NotificationChannel:
     def extend_from_events(self, day: int, events: Iterable[QueuedEvent]) -> None:
         for event in events:
             payload = dict(event.payload)
-            message = str(
-                payload.pop("message", event.event_type.replace("_", " ").title())
-            )
+            message = str(payload.pop("message", event.event_type.replace("_", " ").title()))
             payload.setdefault("event_type", event.event_type)
             payload.setdefault("scheduled_for", event.day)
             self.push(
@@ -199,7 +189,7 @@ def _format_scheduled_line(event: QueuedEvent) -> str:
     return base
 
 
-def _build_default_summary(context: "TurnContext") -> str:
+def _build_default_summary(context: TurnContext) -> str:
     if getattr(context, "summary_lines", None):
         return " | ".join(context.summary_lines)
     if context.events:

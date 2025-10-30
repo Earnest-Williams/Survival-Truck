@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List
 
 from textual.binding import Binding
 from textual.message import Message
@@ -20,9 +20,9 @@ class ControlPanel:
     exposing higher level conveniences for callers.
     """
 
-    _route_waypoints: List[str] = field(default_factory=list)
-    _module_orders: Dict[str, str] = field(default_factory=dict)
-    _crew_assignments: Dict[str, str] = field(default_factory=dict)
+    _route_waypoints: list[str] = field(default_factory=list)
+    _module_orders: dict[str, str] = field(default_factory=dict)
+    _crew_assignments: dict[str, str] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     def plan_route(self, waypoints: Iterable[str]) -> None:
@@ -37,7 +37,7 @@ class ControlPanel:
         self._route_waypoints.clear()
 
     @property
-    def route_waypoints(self) -> List[str]:
+    def route_waypoints(self) -> list[str]:
         """Expose a copy of the currently staged route."""
 
         return list(self._route_waypoints)
@@ -68,10 +68,10 @@ class ControlPanel:
         self._crew_assignments.clear()
 
     # ------------------------------------------------------------------
-    def build_command_payload(self) -> Dict[str, object]:
+    def build_command_payload(self) -> dict[str, object]:
         """Return a dictionary that can be passed to the turn engine."""
 
-        payload: Dict[str, object] = {}
+        payload: dict[str, object] = {}
         if self._route_waypoints:
             payload["route"] = {"waypoints": list(self._route_waypoints)}
         if self._module_orders:
@@ -101,11 +101,7 @@ class ControlPanel:
         from rich.table import Table
 
         table = Table.grid(padding=(0, 1), expand=True)
-        route = (
-            " -> ".join(self._route_waypoints)
-            if self._route_waypoints
-            else "(no route)"
-        )
+        route = " -> ".join(self._route_waypoints) if self._route_waypoints else "(no route)"
         table.add_row("[bold]Route[/bold]", route)
 
         if self._module_orders:
@@ -143,9 +139,7 @@ class ControlPanelWidget(Widget):
         def __init__(self) -> None:
             super().__init__()
 
-    def __init__(
-        self, panel: ControlPanel | None = None, *, title: str | None = None
-    ) -> None:
+    def __init__(self, panel: ControlPanel | None = None, *, title: str | None = None) -> None:
         super().__init__(id="controls")
         self.control_panel = panel or ControlPanel()
         self.title = title

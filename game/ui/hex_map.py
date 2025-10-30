@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
-from typing import Dict, Mapping, MutableMapping, Sequence, Tuple, cast
+from typing import cast
 
 from textual.binding import Binding
 from textual.message import Message
@@ -11,8 +12,8 @@ from textual.message_pump import MessagePump
 from textual.reactive import Reactive, reactive
 from textual.widget import Widget
 
-Coordinate = Tuple[int, int]
-GridData = Tuple[Tuple[str, ...], ...]
+Coordinate = tuple[int, int]
+GridData = tuple[tuple[str, ...], ...]
 
 
 def _normalise_map(
@@ -92,7 +93,7 @@ class HexMapView(Widget):
     class CoordinateSelected(Message):
         """Posted when the user confirms a map coordinate."""
 
-        def __init__(self, sender: "HexMapView", selection: MapSelection) -> None:
+        def __init__(self, sender: HexMapView, selection: MapSelection) -> None:
             super().__init__()
             self.selection = selection
             self.set_sender(cast(MessagePump, sender))
@@ -109,7 +110,7 @@ class HexMapView(Widget):
         grid: Sequence[Sequence[str]] | None = None,
     ) -> None:
         super().__init__(id="map")
-        self.terrain_symbols: Dict[str, str] = dict(self.DEFAULT_TERRAIN_SYMBOLS)
+        self.terrain_symbols: dict[str, str] = dict(self.DEFAULT_TERRAIN_SYMBOLS)
         if terrain_symbols:
             self.terrain_symbols.update(
                 {str(key): str(value) for key, value in terrain_symbols.items()}
@@ -141,9 +142,7 @@ class HexMapView(Widget):
         self.refresh()
 
     def set_highlights(self, highlights: Mapping[Coordinate, str]) -> None:
-        self._highlights = {
-            (int(r), int(c)): str(text) for (r, c), text in highlights.items()
-        }
+        self._highlights = {(int(r), int(c)): str(text) for (r, c), text in highlights.items()}
         self.refresh()
 
     def move_cursor(self, row_delta: int, col_delta: int) -> None:
@@ -180,9 +179,7 @@ class HexMapView(Widget):
         cursor = cast(Coordinate, self.cursor)
         row, col = cursor
         terrain = grid[row][col] if row < len(grid) and col < len(grid[row]) else "?"
-        self.post_message(
-            self.CoordinateSelected(self, MapSelection((row, col), terrain))
-        )
+        self.post_message(self.CoordinateSelected(self, MapSelection((row, col), terrain)))
 
     def _announce_selection(self) -> None:
         grid = self.grid_data
@@ -193,12 +190,10 @@ class HexMapView(Widget):
         if row >= len(grid) or col >= len(grid[row]):
             return
         terrain = grid[row][col]
-        self.post_message(
-            self.CoordinateSelected(self, MapSelection((row, col), terrain))
-        )
+        self.post_message(self.CoordinateSelected(self, MapSelection((row, col), terrain)))
 
     def render(self):  # type: ignore[override]
-        highlight_map: Dict[Coordinate, str] = dict(self._highlights)
+        highlight_map: dict[Coordinate, str] = dict(self._highlights)
         grid = self.grid_data
         if grid:
             cursor = cast(Coordinate, self.cursor)
@@ -207,9 +202,7 @@ class HexMapView(Widget):
                 terrain = grid[row][col]
                 symbol = self.terrain_symbols.get(str(terrain))
                 if symbol is None:
-                    symbol = (
-                        str(terrain)[:2].title() if terrain else self.unknown_symbol
-                    )
+                    symbol = str(terrain)[:2].title() if terrain else self.unknown_symbol
                 highlight_map[(row, col)] = f"[reverse]{symbol}[/reverse]"
         return _render_hex_map(
             grid,

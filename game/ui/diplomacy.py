@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 import networkx as nx
 from textual.widget import Widget
@@ -94,9 +94,7 @@ class DiplomacyView(Widget):
 
         alliance_rows = 0
         for faction in sorted(graph.nodes):
-            allies = sorted(
-                allied_factions(graph, faction, threshold=self.alliance_threshold)
-            )
+            allies = sorted(allied_factions(graph, faction, threshold=self.alliance_threshold))
             if not allies:
                 continue
             alliance_rows += 1

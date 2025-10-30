@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, MutableMapping, MutableSet, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
     Dict,
-    Iterable,
     List,
-    Mapping,
-    MutableMapping,
-    MutableSet,
-    Sequence,
     Set,
     TypedDict,
 )
@@ -31,7 +27,7 @@ class NeedName(str, Enum):
     COMFORT = "comfort"
 
 
-_MEMBER_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+_MEMBER_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
     "name": pl.String,
     "morale": pl.Float64,
 }
@@ -42,24 +38,24 @@ for _need in NeedName:
     _MEMBER_FRAME_SCHEMA[f"{prefix}_min"] = pl.Float64
     _MEMBER_FRAME_SCHEMA[f"{prefix}_max"] = pl.Float64
 
-_RELATIONSHIP_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+_RELATIONSHIP_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
     "source": pl.String,
     "target": pl.String,
     "score": pl.Float64,
 }
 
-_SKILL_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+_SKILL_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
     "name": pl.String,
     "skill": pl.String,
     "value": pl.Int64,
 }
 
-_TRAIT_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+_TRAIT_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
     "name": pl.String,
     "trait": pl.String,
 }
 
-_PERK_FRAME_SCHEMA: Dict[str, pl.datatypes.DataType] = {
+_PERK_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
     "name": pl.String,
     "perk": pl.String,
 }
@@ -159,7 +155,7 @@ class CrewMember:
         self.relationships[other] = clamped
         return clamped
 
-    def relationship_modifier(self, crew: Mapping[str, "CrewMember"]) -> float:
+    def relationship_modifier(self, crew: Mapping[str, CrewMember]) -> float:
         """Compute a morale modifier derived from social ties."""
 
         if not self.relationships:
@@ -186,9 +182,7 @@ class CrewMember:
 
         return (self.morale - 50.0) / 10.0
 
-    def advance_day(
-        self, crew: Mapping[str, "CrewMember"], *, decay_modifier: float = 1.0
-    ) -> None:
+    def advance_day(self, crew: Mapping[str, CrewMember], *, decay_modifier: float = 1.0) -> None:
         """Apply daily need decay and update morale accordingly."""
 
         stress = 0.0
@@ -218,9 +212,7 @@ class CrewMember:
             "name": self.name,
             "morale": self.morale,
             "needs": {need.name.value: need.value for need in self.needs.values()},
-            "decay": {
-                need.name.value: need.decay_per_day for need in self.needs.values()
-            },
+            "decay": {need.name.value: need.decay_per_day for need in self.needs.values()},
             "skills": {skill.value: int(value) for skill, value in self.skills.items()},
             "relationships": dict(self.relationships),
             "traits": sorted(self.traits),
@@ -228,14 +220,14 @@ class CrewMember:
         }
 
     @staticmethod
-    def from_dict(payload: CrewMemberPayload | Mapping[str, object]) -> "CrewMember":
+    def from_dict(payload: CrewMemberPayload | Mapping[str, object]) -> CrewMember:
         """Deserialize a :class:`CrewMember` from a mapping."""
 
         name = str(payload.get("name", ""))
         morale = float(payload.get("morale", 50.0))
         needs_payload = payload.get("needs", {})
         decay_payload = payload.get("decay", {})
-        needs: Dict[NeedName, Need] = {}
+        needs: dict[NeedName, Need] = {}
         if isinstance(needs_payload, Mapping):
             for key, value in needs_payload.items():
                 try:
@@ -245,11 +237,9 @@ class CrewMember:
                 decay = 5.0
                 if isinstance(decay_payload, Mapping):
                     decay = float(decay_payload.get(key, decay))
-                needs[need_name] = Need(
-                    name=need_name, value=float(value), decay_per_day=decay
-                )
+                needs[need_name] = Need(name=need_name, value=float(value), decay_per_day=decay)
         skills_payload = payload.get("skills", {})
-        skills: Dict[SkillType, int] = {}
+        skills: dict[SkillType, int] = {}
         if isinstance(skills_payload, Mapping):
             for key, value in skills_payload.items():
                 try:
@@ -258,21 +248,17 @@ class CrewMember:
                     continue
                 skills[skill] = int(value)
         relationships_payload = payload.get("relationships", {})
-        relationships: Dict[str, float] = {}
+        relationships: dict[str, float] = {}
         if isinstance(relationships_payload, Mapping):
             for key, value in relationships_payload.items():
                 relationships[str(key)] = float(value)
         traits_payload = payload.get("traits", set())
-        traits: Set[str] = set()
-        if isinstance(traits_payload, Iterable) and not isinstance(
-            traits_payload, (str, bytes)
-        ):
+        traits: set[str] = set()
+        if isinstance(traits_payload, Iterable) and not isinstance(traits_payload, (str, bytes)):
             traits = {str(item) for item in traits_payload}
         perks_payload = payload.get("perks", set())
-        perks: Set[str] = set()
-        if isinstance(perks_payload, Iterable) and not isinstance(
-            perks_payload, (str, bytes)
-        ):
+        perks: set[str] = set()
+        if isinstance(perks_payload, Iterable) and not isinstance(perks_payload, (str, bytes)):
             perks = {str(item) for item in perks_payload}
         return CrewMember(
             name=name,
@@ -347,8 +333,8 @@ def team_skill_check(
 ) -> SkillCheckResult:
     """Resolve a cooperative skill check for multiple crew members."""
 
-    participants: List[str] = []
-    contributions: List[float] = []
+    participants: list[str] = []
+    contributions: list[float] = []
     for actor in actors:
         participants.append(actor.name)
         contributions.append(actor.skill_value(skill) + actor.morale_modifier())
@@ -356,9 +342,7 @@ def team_skill_check(
         raise ValueError("team_skill_check requires at least one participant")
     rng = rng or default_rng()
     contributions.sort(reverse=True)
-    base = sum(contributions[:2]) + sum(
-        contribution * 0.25 for contribution in contributions[2:]
-    )
+    base = sum(contributions[:2]) + sum(contribution * 0.25 for contribution in contributions[2:])
     roll = base + int(rng.integers(1, 20, endpoint=True))
     margin = roll - difficulty
     return SkillCheckResult(
@@ -387,12 +371,10 @@ class Crew:
             self.rng = randomness.generator("crew")
         else:
             self.rng = rng or default_rng()
-        self.trait_impacts: Dict[str, TraitImpact] = dict(trait_impacts or {})
-        self.perk_impacts: Dict[str, TraitImpact] = dict(perk_impacts or {})
+        self.trait_impacts: dict[str, TraitImpact] = dict(trait_impacts or {})
+        self.perk_impacts: dict[str, TraitImpact] = dict(perk_impacts or {})
         self._member_frame: pl.DataFrame = pl.DataFrame(schema=_MEMBER_FRAME_SCHEMA)
-        self._relationship_frame: pl.DataFrame = pl.DataFrame(
-            schema=_RELATIONSHIP_FRAME_SCHEMA
-        )
+        self._relationship_frame: pl.DataFrame = pl.DataFrame(schema=_RELATIONSHIP_FRAME_SCHEMA)
         self._skill_frame: pl.DataFrame = pl.DataFrame(schema=_SKILL_FRAME_SCHEMA)
         self._trait_frame: pl.DataFrame = pl.DataFrame(schema=_TRAIT_FRAME_SCHEMA)
         self._perk_frame: pl.DataFrame = pl.DataFrame(schema=_PERK_FRAME_SCHEMA)
@@ -423,14 +405,10 @@ class Crew:
         if self._has_member(member.name):
             raise ValueError(f"Crew already contains member named {member.name!r}")
         self._register_member(member)
-        morale_changes: Dict[str, float] = {}
+        morale_changes: dict[str, float] = {}
         if base_morale_boost:
-            morale_changes.update(
-                self._adjust_morale(base_morale_boost, exclude={member.name})
-            )
-        bonus = self._personality_morale_delta(
-            member.traits, member.perks, event="recruit"
-        )
+            morale_changes.update(self._adjust_morale(base_morale_boost, exclude={member.name}))
+        bonus = self._personality_morale_delta(member.traits, member.perks, event="recruit")
         if bonus:
             self._merge_morale_changes(
                 morale_changes,
@@ -460,7 +438,7 @@ class Crew:
         member = self._deregister_member(name)
         if member is None:
             return None
-        morale_changes: Dict[str, float] = {}
+        morale_changes: dict[str, float] = {}
         if base_morale_penalty:
             morale_changes.update(self._adjust_morale(base_morale_penalty))
         penalty = self._personality_morale_delta(
@@ -510,8 +488,8 @@ class Crew:
         if len(names) < 2:
             return
         self.rng.shuffle(names)
-        updates: List[Dict[str, float | str]] = []
-        for first, second in zip(names[::2], names[1::2]):
+        updates: list[dict[str, float | str]] = []
+        for first, second in zip(names[::2], names[1::2], strict=False):
             first_score = self._relationship_score(first, second)
             second_score = self._relationship_score(second, first)
             attitude = (first_score + second_score) / 2
@@ -537,9 +515,7 @@ class Crew:
         if updates:
             update_df = pl.DataFrame(updates, schema=_RELATIONSHIP_FRAME_SCHEMA)
             combined = pl.concat([self._relationship_frame, update_df], how="vertical")
-            self._relationship_frame = combined.unique(
-                subset=["source", "target"], keep="last"
-            )
+            self._relationship_frame = combined.unique(subset=["source", "target"], keep="last")
 
     def skill_check(
         self,
@@ -553,9 +529,7 @@ class Crew:
         if not valid_names:
             raise ValueError("No matching crew members provided for skill check")
 
-        member_slice = self._member_frame.filter(
-            pl.col("name").is_in(valid_names)
-        ).select(
+        member_slice = self._member_frame.filter(pl.col("name").is_in(valid_names)).select(
             "name",
             pl.col("morale"),
             ((pl.col("morale") - 50.0) / 10.0).alias("_morale_modifier"),
@@ -572,9 +546,7 @@ class Crew:
             member_slice.join(skill_slice, on="name", how="left")
             .with_columns(pl.col("_skill_value").fill_null(0.0))
             .with_columns(
-                (pl.col("_skill_value") + pl.col("_morale_modifier")).alias(
-                    "_contribution"
-                )
+                (pl.col("_skill_value") + pl.col("_morale_modifier")).alias("_contribution")
             )
         )
 
@@ -597,9 +569,7 @@ class Crew:
             str(row["name"]): float(row["_contribution"])
             for row in contributions.select("name", "_contribution").to_dicts()
         }
-        ordered_contributions = [
-            contribution_map.get(name, 0.0) for name in valid_names
-        ]
+        ordered_contributions = [contribution_map.get(name, 0.0) for name in valid_names]
         primary = sorted(ordered_contributions, reverse=True)
         base = sum(primary[:2]) + sum(value * 0.25 for value in primary[2:])
         roll = base + int(self.rng.integers(1, 20, endpoint=True))
@@ -615,7 +585,7 @@ class Crew:
 
     # ------------------------------------------------------------------
     def _register_member(self, member: CrewMember) -> None:
-        existing_names: List[str] = []
+        existing_names: list[str] = []
         if not self._member_frame.is_empty():
             existing_names = self._member_frame.get_column("name").to_list()
         member._normalize_relationships()
@@ -629,7 +599,7 @@ class Crew:
             (pl.col("source") != member.name) & (pl.col("target") != member.name)
         )
 
-        row: Dict[str, float | str] = {
+        row: dict[str, float | str] = {
             "name": member.name,
             "morale": float(member.morale),
         }
@@ -644,9 +614,7 @@ class Crew:
         if self._member_frame.is_empty():
             self._member_frame = new_member_df
         else:
-            self._member_frame = pl.concat(
-                [self._member_frame, new_member_df], how="vertical"
-            )
+            self._member_frame = pl.concat([self._member_frame, new_member_df], how="vertical")
 
         if member.skills:
             skill_rows = [
@@ -683,7 +651,7 @@ class Crew:
             self._perk_frame = pl.concat([self._perk_frame, perk_df], how="vertical")
 
         if existing_names:
-            relationship_rows: List[Dict[str, float | str]] = []
+            relationship_rows: list[dict[str, float | str]] = []
             for other_name in existing_names:
                 relationship_rows.append(
                     {
@@ -701,15 +669,9 @@ class Crew:
                         "score": 0.0,
                     }
                 )
-            relationship_df = pl.DataFrame(
-                relationship_rows, schema=_RELATIONSHIP_FRAME_SCHEMA
-            )
-            combined = pl.concat(
-                [self._relationship_frame, relationship_df], how="vertical"
-            )
-            self._relationship_frame = combined.unique(
-                subset=["source", "target"], keep="last"
-            )
+            relationship_df = pl.DataFrame(relationship_rows, schema=_RELATIONSHIP_FRAME_SCHEMA)
+            combined = pl.concat([self._relationship_frame, relationship_df], how="vertical")
+            self._relationship_frame = combined.unique(subset=["source", "target"], keep="last")
 
     def _has_member(self, name: str) -> bool:
         if self._member_frame.is_empty():
@@ -733,8 +695,8 @@ class Crew:
         self,
         delta: float,
         *,
-        exclude: Set[str] | None = None,
-    ) -> Dict[str, float]:
+        exclude: set[str] | None = None,
+    ) -> dict[str, float]:
         if self._member_frame.is_empty() or delta == 0:
             return {}
         names_expr = pl.col("name")
@@ -742,9 +704,7 @@ class Crew:
         adjusted = self._member_frame.with_columns(
             pl.when(names_expr.is_in(exclude_list))
             .then(pl.col("morale"))
-            .otherwise(
-                (pl.col("morale") + delta).clip(lower_bound=0.0, upper_bound=100.0)
-            )
+            .otherwise((pl.col("morale") + delta).clip(lower_bound=0.0, upper_bound=100.0))
             .alias("morale")
         )
         delta_df = adjusted.join(
@@ -753,11 +713,9 @@ class Crew:
             how="left",
         ).with_columns((pl.col("morale") - pl.col("_old_morale")).alias("_delta"))
         self._member_frame = adjusted
-        result: Dict[str, float] = {}
+        result: dict[str, float] = {}
         for row in (
-            delta_df.filter(~names_expr.is_in(exclude_list))
-            .select("name", "_delta")
-            .to_dicts()
+            delta_df.filter(~names_expr.is_in(exclude_list)).select("name", "_delta").to_dicts()
         ):
             result[str(row["name"])] = float(row["_delta"])
         return result
@@ -808,7 +766,7 @@ class Crew:
 
     @staticmethod
     def _merge_morale_changes(
-        base: Dict[str, float],
+        base: dict[str, float],
         extra: Mapping[str, float],
     ) -> None:
         for name, delta in extra.items():
@@ -845,8 +803,8 @@ class Crew:
         if base.is_empty():
             raise KeyError(name)
         row = base.to_dicts()[0]
-        needs: Dict[str, float] = {}
-        decay: Dict[str, float] = {}
+        needs: dict[str, float] = {}
+        decay: dict[str, float] = {}
         for need_name in NeedName:
             prefix = need_name.value
             needs[prefix] = float(row[f"{prefix}_value"])
@@ -857,12 +815,8 @@ class Crew:
         traits = [str(item["trait"]) for item in trait_rows]
         perk_rows = self._perk_frame.filter(pl.col("name") == name).to_dicts()
         perks = [str(item["perk"]) for item in perk_rows]
-        relationship_rows = self._relationship_frame.filter(
-            pl.col("source") == name
-        ).to_dicts()
-        relationships = {
-            str(item["target"]): float(item["score"]) for item in relationship_rows
-        }
+        relationship_rows = self._relationship_frame.filter(pl.col("source") == name).to_dicts()
+        relationships = {str(item["target"]): float(item["score"]) for item in relationship_rows}
         payload: CrewMemberPayload = {
             "name": str(row["name"]),
             "morale": float(row["morale"]),
@@ -884,7 +838,7 @@ class Crew:
         if frame.is_empty():
             return frame
         lazy = frame.lazy()
-        stress_columns: List[pl.Expr] = []
+        stress_columns: list[pl.Expr] = []
         for need_name in NeedName:
             prefix = need_name.value
             value_col = f"{prefix}_value"
@@ -898,15 +852,10 @@ class Crew:
             satisfaction_expr = (
                 pl.when(pl.col(max_col) <= pl.col(min_col))
                 .then(1.0)
-                .otherwise(
-                    (new_value_expr - pl.col(min_col))
-                    / (pl.col(max_col) - pl.col(min_col))
-                )
+                .otherwise((new_value_expr - pl.col(min_col)) / (pl.col(max_col) - pl.col(min_col)))
             )
             stress_expr = (
-                pl.when(satisfaction_expr < 0.5)
-                .then(0.5 - satisfaction_expr)
-                .otherwise(0.0)
+                pl.when(satisfaction_expr < 0.5).then(0.5 - satisfaction_expr).otherwise(0.0)
             )
             lazy = lazy.with_columns(
                 new_value_expr.alias(value_col),
@@ -934,9 +883,7 @@ class Crew:
                 boost_lazy = (
                     valid.group_by("source")
                     .agg(pl.col("score").mean().alias("mean_score"))
-                    .with_columns(
-                        (pl.col("mean_score") / 200.0).alias("relationship_boost")
-                    )
+                    .with_columns((pl.col("mean_score") / 200.0).alias("relationship_boost"))
                     .select(pl.col("source").alias("name"), "relationship_boost")
                     .lazy()
                 )
@@ -969,9 +916,7 @@ class Crew:
         names = self._member_frame.get_column("name").to_list()
         if not names:
             return frame
-        filtered = frame.filter(
-            pl.col("source").is_in(names) & pl.col("target").is_in(names)
-        )
+        filtered = frame.filter(pl.col("source").is_in(names) & pl.col("target").is_in(names))
         if filtered.is_empty():
             return filtered
         reverse = filtered.select(
@@ -985,9 +930,7 @@ class Crew:
             .then(pl.col("score"))
             .otherwise((pl.col("score") + pl.col("reverse_score")) / 2.0)
         )
-        return joined.with_columns(equilibrium.alias("score")).select(
-            "source", "target", "score"
-        )
+        return joined.with_columns(equilibrium.alias("score")).select("source", "target", "score")
 
     @staticmethod
     def _aggregate_impacts(

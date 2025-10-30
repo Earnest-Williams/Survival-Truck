@@ -2,18 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import (
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    Mapping,
-    Sequence,
-    Tuple,
-    Type,
     TypeVar,
 )
 
@@ -62,7 +55,7 @@ _M = TypeVar("_M", bound=BaseModel)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _pack_model(model: BaseModel) -> bytes:
@@ -70,7 +63,7 @@ def _pack_model(model: BaseModel) -> bytes:
     return msgpack.packb(payload, use_bin_type=True)
 
 
-def _unpack_model(payload: bytes, model_type: Type[_M]) -> _M:
+def _unpack_model(payload: bytes, model_type: type[_M]) -> _M:
     data = msgpack.unpackb(payload, raw=False)
     return model_type.model_validate(data)
 
@@ -81,9 +74,7 @@ class WorldConfigRecord(SQLModel, table=True):
     __tablename__ = "world_configs"
 
     id: int | None = Field(default=None, primary_key=True)
-    slot: str = Field(
-        sa_column=Column(String(128), unique=True, index=True, nullable=False)
-    )
+    slot: str = Field(sa_column=Column(String(128), unique=True, index=True, nullable=False))
     payload: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
     created_at: datetime = Field(
         default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False)
@@ -169,9 +160,7 @@ def store_world_config(engine: Engine, slot: str, config: WorldConfig) -> None:
             select(WorldConfigRecord).where(WorldConfigRecord.slot == slot)
         ).first()
         if record is None:
-            record = WorldConfigRecord(
-                slot=slot, payload=payload, created_at=now, updated_at=now
-            )
+            record = WorldConfigRecord(slot=slot, payload=payload, created_at=now, updated_at=now)
             session.add(record)
         else:
             record.payload = payload
@@ -206,8 +195,7 @@ def store_daily_diff(
     now = _now()
     with Session(engine) as session:
         statement = select(WorldDailyDiffRecord).where(
-            (WorldDailyDiffRecord.slot == slot)
-            & (WorldDailyDiffRecord.day == snapshot.day)
+            (WorldDailyDiffRecord.slot == slot) & (WorldDailyDiffRecord.day == snapshot.day)
         )
         record = session.exec(statement).first()
         if record is None:
@@ -273,7 +261,7 @@ def store_season_snapshot(
 
 def load_daily_diff(
     engine: Engine, slot: str, day: int
-) -> Tuple[WorldSnapshotMetadata, WorldSnapshot] | None:
+) -> tuple[WorldSnapshotMetadata, WorldSnapshot] | None:
     """Load the snapshot and metadata for ``slot`` on ``day`` if present."""
 
     statement = select(WorldDailyDiffRecord).where(
@@ -288,14 +276,11 @@ def load_daily_diff(
         return metadata, snapshot
 
 
-def load_season_snapshot(
-    engine: Engine, slot: str, day: int
-) -> SeasonSnapshotEntry | None:
+def load_season_snapshot(engine: Engine, slot: str, day: int) -> SeasonSnapshotEntry | None:
     """Load the seasonal snapshot for ``slot`` on ``day`` if present."""
 
     statement = select(WorldSeasonSnapshotRecord).where(
-        (WorldSeasonSnapshotRecord.slot == slot)
-        & (WorldSeasonSnapshotRecord.day == day)
+        (WorldSeasonSnapshotRecord.slot == slot) & (WorldSeasonSnapshotRecord.day == day)
     )
     with Session(engine) as session:
         record = session.exec(statement).first()
@@ -308,7 +293,7 @@ def load_season_snapshot(
 
 def iter_daily_diffs(
     engine: Engine, slot: str
-) -> Iterator[Tuple[WorldSnapshotMetadata, WorldSnapshot]]:
+) -> Iterator[tuple[WorldSnapshotMetadata, WorldSnapshot]]:
     """Iterate over stored diffs ordered by day for ``slot``."""
 
     statement = (
@@ -338,7 +323,7 @@ def iter_season_snapshots(engine: Engine, slot: str) -> Iterator[SeasonSnapshotE
             yield SeasonSnapshotEntry(record.season, metadata, snapshot)
 
 
-def serialize_chunk(chunk: MapChunk) -> Dict[str, object]:
+def serialize_chunk(chunk: MapChunk) -> dict[str, object]:
     """Serialize a :class:`MapChunk` into a JSON-friendly mapping."""
 
     return ChunkSnapshot.from_chunk(chunk).model_dump(mode="json")
@@ -351,19 +336,19 @@ def deserialize_chunk(payload: Mapping[str, object]) -> MapChunk:
     return snapshot.to_chunk()
 
 
-def serialize_chunks(chunks: Iterable[MapChunk]) -> List[Dict[str, object]]:
+def serialize_chunks(chunks: Iterable[MapChunk]) -> list[dict[str, object]]:
     """Serialize ``chunks`` into a list of mappings."""
 
     return [serialize_chunk(chunk) for chunk in chunks]
 
 
-def deserialize_chunks(payload: Sequence[Mapping[str, object]]) -> List[MapChunk]:
+def deserialize_chunks(payload: Sequence[Mapping[str, object]]) -> list[MapChunk]:
     """Deserialize a sequence of chunk payloads back into :class:`MapChunk` objects."""
 
     return [deserialize_chunk(item) for item in payload]
 
 
-def serialize_site(site: Site) -> Dict[str, object]:
+def serialize_site(site: Site) -> dict[str, object]:
     """Serialize a :class:`Site` into a JSON-friendly mapping."""
 
     return SiteSnapshot.from_site(site).model_dump(mode="json")
@@ -376,13 +361,13 @@ def deserialize_site(payload: Mapping[str, object]) -> Site:
     return snapshot.to_site()
 
 
-def serialize_sites(sites: Iterable[Site]) -> List[Dict[str, object]]:
+def serialize_sites(sites: Iterable[Site]) -> list[dict[str, object]]:
     """Serialize a collection of :class:`Site` objects."""
 
     return [serialize_site(site) for site in sites]
 
 
-def deserialize_sites(payload: Sequence[Mapping[str, object]]) -> List[Site]:
+def deserialize_sites(payload: Sequence[Mapping[str, object]]) -> list[Site]:
     """Deserialize serialized site payloads."""
 
     return [deserialize_site(item) for item in payload]

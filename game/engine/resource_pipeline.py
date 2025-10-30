@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, Iterable, List, Mapping, Sequence
+from typing import TYPE_CHECKING
 
 from numpy.random import Generator
 
@@ -27,9 +28,9 @@ class ResourceLogEntry:
 
     phase: str
     source: str
-    consumed: Dict[str, float] = field(default_factory=dict)
-    produced: Dict[str, float] = field(default_factory=dict)
-    notes: Dict[str, object] = field(default_factory=dict)
+    consumed: dict[str, float] = field(default_factory=dict)
+    produced: dict[str, float] = field(default_factory=dict)
+    notes: dict[str, object] = field(default_factory=dict)
 
 
 class ResourcePipeline:
@@ -41,14 +42,13 @@ class ResourcePipeline:
         production_catalog: Mapping[str, InventoryItem] | None = None,
         rng: Generator | None = None,
     ) -> None:
-        self.production_catalog: Dict[str, InventoryItem] = {
-            key: value.clone(quantity=1.0)
-            for key, value in (production_catalog or {}).items()
+        self.production_catalog: dict[str, InventoryItem] = {
+            key: value.clone(quantity=1.0) for key, value in (production_catalog or {}).items()
         }
         self.rng = rng
 
     # ------------------------------------------------------------------
-    def process_crew_actions(self, context: "TurnContext") -> None:
+    def process_crew_actions(self, context: TurnContext) -> None:
         truck_component = context.world.get_singleton(TruckComponent)
         if truck_component is None:
             return
@@ -62,9 +62,7 @@ class ResourcePipeline:
         if not isinstance(actions, Iterable):
             return
 
-        log: List[ResourceLogEntry] = context.world_state.setdefault(
-            "resource_events", []
-        )
+        log: list[ResourceLogEntry] = context.world_state.setdefault("resource_events", [])
 
         spoiled = list(inventory.advance_time())
         if spoiled:
@@ -85,8 +83,8 @@ class ResourcePipeline:
             production = self._normalize_resource_map(raw_action.get("produce"))
             adjustments = raw_action.get("need_adjustments", {})
 
-            consumed: Dict[str, float] = {}
-            produced: Dict[str, float] = {}
+            consumed: dict[str, float] = {}
+            produced: dict[str, float] = {}
 
             try:
                 consumed = self._apply_consumption(inventory, consumption)
@@ -114,7 +112,7 @@ class ResourcePipeline:
                 )
             )
 
-    def process_site_exploitation(self, context: "TurnContext") -> None:
+    def process_site_exploitation(self, context: TurnContext) -> None:
         truck_component = context.world.get_singleton(TruckComponent)
         if truck_component is None:
             return
@@ -124,16 +122,12 @@ class ResourcePipeline:
             return
 
         sites_component = context.world.get_singleton(SitesComponent)
-        site_state = (
-            sites_component.sites if sites_component is not None else SiteStateFrame()
-        )
+        site_state = sites_component.sites if sites_component is not None else SiteStateFrame()
         orders = context.command.get("site_exploitation", [])
         if not isinstance(orders, Iterable):
             return
 
-        log: List[ResourceLogEntry] = context.world_state.setdefault(
-            "resource_events", []
-        )
+        log: list[ResourceLogEntry] = context.world_state.setdefault("resource_events", [])
 
         for raw_order in orders:
             if not isinstance(raw_order, Mapping):
@@ -145,17 +139,15 @@ class ResourcePipeline:
             if not site_state.has_site(site_key):
                 continue
 
-            produced: Dict[str, float] = {}
-            notes: Dict[str, object] = {"site": site_key}
+            produced: dict[str, float] = {}
+            notes: dict[str, object] = {"site": site_key}
 
             result = raw_order.get("scavenge_result")
             if isinstance(result, SkillCheckResult):
                 progress = site_state.apply_scavenge_result(site_key, result)
                 yield_key = str(raw_order.get("resource", "scavenged_goods"))
                 base_amount = max(1.0, progress / 5.0)
-                produced.update(
-                    self._apply_production(inventory, {yield_key: base_amount})
-                )
+                produced.update(self._apply_production(inventory, {yield_key: base_amount}))
                 notes["progress"] = progress
 
             explicit_production = self._normalize_resource_map(raw_order.get("produce"))
@@ -180,8 +172,8 @@ class ResourcePipeline:
 
     def _apply_consumption(
         self, inventory: Inventory, requirements: Mapping[str, float]
-    ) -> Dict[str, float]:
-        consumed: Dict[str, float] = {}
+    ) -> dict[str, float]:
+        consumed: dict[str, float] = {}
         for resource, amount in requirements.items():
             if amount <= 0:
                 continue
@@ -198,8 +190,8 @@ class ResourcePipeline:
 
     def _apply_production(
         self, inventory: Inventory, outputs: Mapping[str, float]
-    ) -> Dict[str, float]:
-        produced: Dict[str, float] = {}
+    ) -> dict[str, float]:
+        produced: dict[str, float] = {}
         for resource, amount in outputs.items():
             if amount <= 0:
                 continue
@@ -235,10 +227,10 @@ class ResourcePipeline:
                     continue
                 crew.adjust_need(name, need, float(delta))
 
-    def _normalize_resource_map(self, payload: object) -> Dict[str, float]:
+    def _normalize_resource_map(self, payload: object) -> dict[str, float]:
         if not isinstance(payload, Mapping):
             return {}
-        normalized: Dict[str, float] = {}
+        normalized: dict[str, float] = {}
         for key, value in payload.items():
             try:
                 amount = float(value)
@@ -247,7 +239,7 @@ class ResourcePipeline:
             normalized[str(key)] = amount
         return normalized
 
-    def _normalize_participants(self, payload: object) -> List[str]:
+    def _normalize_participants(self, payload: object) -> list[str]:
         if isinstance(payload, str):
             return [payload]
         if isinstance(payload, Sequence):

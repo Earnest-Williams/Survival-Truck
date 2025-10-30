@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import hashlib
-from typing import Callable, Dict
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
-from numpy.random import BitGenerator, Generator, PCG64
+from numpy.random import PCG64, BitGenerator, Generator
 from opensimplex import OpenSimplex
 
 BitGeneratorFactory = Callable[[int], BitGenerator]
@@ -33,8 +33,8 @@ class WorldRandomness:
 
     seed: int
     bit_generator_factory: BitGeneratorFactory = _default_bit_generator
-    _generators: Dict[str, Generator] = field(default_factory=dict)
-    _noise_fields: Dict[str, OpenSimplex] = field(default_factory=dict)
+    _generators: dict[str, Generator] = field(default_factory=dict)
+    _noise_fields: dict[str, OpenSimplex] = field(default_factory=dict)
 
     def _derive_seed(self, namespace: str, *, modulo: int) -> int:
         token = f"{self.seed}:{namespace}"

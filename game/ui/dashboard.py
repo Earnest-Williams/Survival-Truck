@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Mapping
+from collections.abc import Mapping
 
 from rich.console import RenderableType
 from textual.binding import Binding
@@ -21,9 +21,7 @@ def _build_stats_panel(stats: Mapping[str, str]):
     return Panel(table, title="Campaign Stats", border_style="blue")
 
 
-def _placeholder_panel(
-    title: str, message: str, *, border_style: str = "blue"
-) -> RenderableType:
+def _placeholder_panel(title: str, message: str, *, border_style: str = "blue") -> RenderableType:
     from rich.panel import Panel
 
     return Panel(message, title=title, border_style=border_style)
@@ -47,9 +45,7 @@ class DashboardView(Widget):
         self.title = title
         self._focus_detail: str | None = None
         self.notification_channel = notification_channel or NotificationChannel()
-        self._stats: Dict[str, str] = {
-            str(key): str(value) for key, value in (stats or {}).items()
-        }
+        self._stats: dict[str, str] = {str(key): str(value) for key, value in (stats or {}).items()}
 
     def update_stats(self, stats: Mapping[str, str]) -> None:
         self._stats = {str(key): str(value) for key, value in stats.items()}
