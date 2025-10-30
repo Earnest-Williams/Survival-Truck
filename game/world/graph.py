@@ -11,6 +11,7 @@ from typing import (
     Mapping,
     MutableMapping,
     Sequence,
+    TypeAlias,
     cast,
 )
 
@@ -27,7 +28,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 else:  # pragma: no cover - runtime fallback for typing only
     EsperWorld = Any
 
-WorldGraph = nx.Graph[str]
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    WorldGraph: TypeAlias = nx.Graph[str]
+else:  # pragma: no cover - runtime alias without subscripting
+    WorldGraph: TypeAlias = nx.Graph
 
 
 def build_site_movement_graph(
