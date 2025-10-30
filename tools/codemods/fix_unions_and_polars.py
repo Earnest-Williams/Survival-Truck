@@ -22,14 +22,22 @@ POLARS_TARGET_FILES = {
 }
 
 SKIP_DIRS = {
-    ".venv", "venv", ".mypy_cache", ".ruff_cache", ".pytest_cache",
-    "__pycache__", "dist", "build",
+    ".venv",
+    "venv",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    "__pycache__",
+    "dist",
+    "build",
 }
+
 
 def replace_unions(src: str) -> str:
     src = TRIPLE_NUMERIC_TUPLE.sub(r"isinstance(\1, int | float | str)", src)
     src = DOUBLE_INT_STR_TUPLE.sub(r"isinstance(\1, int | str)", src)
     return src
+
 
 def replace_polars_imports(path: Path, src: str) -> str:
     rel = path.as_posix()
@@ -40,8 +48,10 @@ def replace_polars_imports(path: Path, src: str) -> str:
         )
     return src
 
+
 def should_skip(path: Path) -> bool:
     return any(part in SKIP_DIRS for part in path.parts)
+
 
 def process_file(path: Path, dry_run: bool = False) -> bool:
     if path.suffix != ".py":
@@ -54,6 +64,7 @@ def process_file(path: Path, dry_run: bool = False) -> bool:
             path.write_text(text, encoding="utf-8")
         return True
     return False
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -69,6 +80,7 @@ def main() -> None:
             print(("would update: " if args.dry_run else "updated: ") + str(p))
             changed += 1
     print(f"done. files {'to change' if args.dry_run else 'changed'}: {changed}")
+
 
 if __name__ == "__main__":
     main()

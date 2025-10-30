@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 
 import polars as pl
-from polars.type_aliases import PolarsDataType
+from polars._typing import PolarsDataType
 
 from ..crew import SkillCheckResult, SkillType
 from .sites import AttentionCurve, RiskCurve, Site, SiteType

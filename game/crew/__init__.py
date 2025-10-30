@@ -9,7 +9,7 @@ from typing import TypedDict
 
 import polars as pl
 from numpy.random import Generator, default_rng
-from polars.type_aliases import PolarsDataType
+from polars._typing import PolarsDataType
 
 from ..world.rng import WorldRandomness
 
@@ -221,7 +221,7 @@ class CrewMember:
 
         name = str(payload.get("name", ""))
         morale_raw = payload.get("morale", 50.0)
-        morale = float(morale_raw) if isinstance(morale_raw, (int, float, str)) else 50.0
+        morale = float(morale_raw) if isinstance(morale_raw, int | float | str) else 50.0
         needs_payload = payload.get("needs", {})
         decay_payload = payload.get("decay", {})
         needs: dict[NeedName, Need] = {}
@@ -234,9 +234,9 @@ class CrewMember:
                 decay = 5.0
                 if isinstance(decay_payload, Mapping):
                     decay_raw = decay_payload.get(key, decay)
-                    if isinstance(decay_raw, (int, float, str)):
+                    if isinstance(decay_raw, int | float | str):
                         decay = float(decay_raw)
-                if isinstance(value, (int, float, str)):
+                if isinstance(value, int | float | str):
                     need_value = float(value)
                 else:
                     continue
@@ -253,13 +253,13 @@ class CrewMember:
                     skill = SkillType(str(key))
                 except ValueError:
                     continue
-                if isinstance(value, (int, float, str)):
+                if isinstance(value, int | float | str):
                     skills[skill] = int(float(value))
         relationships_payload = payload.get("relationships", {})
         relationships: dict[str, float] = {}
         if isinstance(relationships_payload, Mapping):
             for key, value in relationships_payload.items():
-                if isinstance(value, (int, float, str)):
+                if isinstance(value, int | float | str):
                     relationships[str(key)] = float(value)
         traits_payload = payload.get("traits", set())
         traits: set[str] = set()

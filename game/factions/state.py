@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from math import isnan
 
 import polars as pl
-from polars.type_aliases import PolarsDataType
+from polars._typing import PolarsDataType
 
 _FACTION_SCHEMA: dict[str, PolarsDataType] = {"name": pl.String}
 _KNOWN_SITE_SCHEMA: dict[str, PolarsDataType] = {"faction": pl.String, "site": pl.String}

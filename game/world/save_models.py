@@ -88,7 +88,7 @@ class TravelReportModel(BaseModel):
     @field_validator("base_cost", "modifier", "load_factor", "adjusted_cost")
     @classmethod
     def _ensure_float(cls, value: object) -> float:
-        if isinstance(value, (int, float, str)):
+        if isinstance(value, int | float | str):
             return float(value)
         raise TypeError("value must be numeric")
 
@@ -106,7 +106,7 @@ class WeatherRecordModel(BaseModel):
     @field_validator("travel_modifier", "maintenance_modifier")
     @classmethod
     def _ensure_float(cls, value: object) -> float:
-        if isinstance(value, (int, float, str)):
+        if isinstance(value, int | float | str):
             return float(value)
         raise TypeError("value must be numeric")
 
@@ -144,7 +144,7 @@ class ResourceLogEntryModel(BaseModel):
             raise TypeError("resource map must be a mapping of resource ids to quantities")
         normalised: dict[str, float] = {}
         for key, amount in value.items():
-            if isinstance(amount, (int, float, str)):
+            if isinstance(amount, int | float | str):
                 normalised[str(key)] = float(amount)
             else:
                 raise TypeError("resource quantities must be numeric")
@@ -190,7 +190,7 @@ class SiteGraphModel(BaseModel):
                 continue
             inner: dict[str, float] = {}
             for neighbour, cost in mapping.items():
-                if isinstance(cost, (int, float, str)):
+                if isinstance(cost, int | float | str):
                     inner[str(neighbour)] = float(cost)
                 else:
                     raise TypeError("connection costs must be numeric")
@@ -235,7 +235,7 @@ class WorldStatePayload(BaseModel):
             raise TypeError("progress must be a mapping of task names to values")
         normalised: dict[str, float] = {}
         for key, amount in value.items():
-            if isinstance(amount, (int, float, str)):
+            if isinstance(amount, int | float | str):
                 normalised[str(key)] = float(amount)
             else:
                 raise TypeError("progress values must be numeric")

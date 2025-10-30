@@ -513,7 +513,7 @@ class FactionAIController:
         if isinstance(value, Mapping):
             q = value.get("q")
             r = value.get("r")
-            if isinstance(q, (int, str)) and isinstance(r, (int, str)):
+            if isinstance(q, int | str) and isinstance(r, int | str):
                 try:
                     return HexCoord(int(q), int(r))
                 except ValueError:
@@ -521,7 +521,7 @@ class FactionAIController:
             return None
         if isinstance(value, Sequence) and len(value) == 2:
             left, right = value[0], value[1]
-            if isinstance(left, (int, str)) and isinstance(right, (int, str)):
+            if isinstance(left, int | str) and isinstance(right, int | str):
                 try:
                     return HexCoord(int(left), int(right))
                 except ValueError:

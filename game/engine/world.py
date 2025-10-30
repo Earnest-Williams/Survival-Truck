@@ -1,17 +1,14 @@
-"""ECS world abstraction for the Survival Truck simulation."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Protocol,
-    TypeVar,
-    cast,
-)
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
 import esper
+
+from ..crew import Crew
+from ..factions import FactionAIController
+from ..truck import Truck
+from ..world.stateframes import SiteStateFrame
 
 EsperWorld: type[Any]
 
@@ -53,11 +50,6 @@ except AttributeError:  # pragma: no cover - fallback for stripped-down esper in
 
     EsperWorld = _EsperWorldFallback
 
-
-from ..crew import Crew
-from ..factions import FactionAIController
-from ..truck import Truck
-from ..world.stateframes import SiteStateFrame
 
 if TYPE_CHECKING:  # pragma: no cover - imported only for typing
     from .turn_engine import TurnContext

@@ -330,7 +330,7 @@ class TurnEngine:
             or route.get("cost")
             or route.get("distance")
         )
-        if not isinstance(raw_base_cost, (int, float, str)):
+        if not isinstance(raw_base_cost, int | float | str):
             return
         try:
             base_cost = float(raw_base_cost)
