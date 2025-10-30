@@ -6,6 +6,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from rich import box
+from rich.console import RenderableType
+from rich.panel import Panel
+from rich.table import Table
+
 from ..events.event_queue import QueuedEvent
 
 if TYPE_CHECKING:
@@ -72,12 +77,8 @@ class TurnLogChannel:
         return entry
 
     # Rendering helpers -------------------------------------------------
-    def render_table(self, *, title: str = "Turn Log"):
+    def render_table(self, *, title: str = "Turn Log") -> RenderableType:
         """Return a Rich renderable summarising recent log entries."""
-
-        from rich import box
-        from rich.panel import Panel
-        from rich.table import Table
 
         table = Table(title=title, expand=True, box=box.SIMPLE_HEAVY)
         table.add_column("Day", justify="right", no_wrap=True)
@@ -158,10 +159,7 @@ class NotificationChannel:
 
         self._notifications.clear()
 
-    def render_panel(self, *, title: str = "Notifications"):
-        from rich.panel import Panel
-        from rich.table import Table
-
+    def render_panel(self, *, title: str = "Notifications") -> RenderableType:
         table = Table(expand=True)
         table.add_column("Day", justify="right", no_wrap=True)
         table.add_column("Category", no_wrap=True)

@@ -6,7 +6,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 import networkx as nx
-from textual.app import RenderResult
+from rich.console import Group, RenderableType
+from rich.panel import Panel
+from rich.table import Table
 from textual.widget import Widget
 
 from ..factions import FactionRecord
@@ -47,11 +49,7 @@ class DiplomacyView(Widget):
         self.refresh()
 
     # ------------------------------------------------------------------
-    def render(self) -> RenderResult:
-        from rich.console import Group
-        from rich.panel import Panel
-        from rich.table import Table
-
+    def render(self) -> RenderableType:
         factions = self._snapshot.factions
         graph = self._snapshot.graph
 

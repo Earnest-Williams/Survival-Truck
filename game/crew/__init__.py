@@ -5,15 +5,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, MutableMapping, MutableSet, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import (
-    Dict,
-    List,
-    Set,
-    TypedDict,
-)
+from typing import TypedDict
 
 import polars as pl
 from numpy.random import Generator, default_rng
+from polars.type_aliases import PolarsDataType
 
 from ..world.rng import WorldRandomness
 
@@ -27,7 +23,7 @@ class NeedName(str, Enum):
     COMFORT = "comfort"
 
 
-_MEMBER_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
+_MEMBER_FRAME_SCHEMA: dict[str, PolarsDataType] = {
     "name": pl.String,
     "morale": pl.Float64,
 }
@@ -38,24 +34,24 @@ for _need in NeedName:
     _MEMBER_FRAME_SCHEMA[f"{prefix}_min"] = pl.Float64
     _MEMBER_FRAME_SCHEMA[f"{prefix}_max"] = pl.Float64
 
-_RELATIONSHIP_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
+_RELATIONSHIP_FRAME_SCHEMA: dict[str, PolarsDataType] = {
     "source": pl.String,
     "target": pl.String,
     "score": pl.Float64,
 }
 
-_SKILL_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
+_SKILL_FRAME_SCHEMA: dict[str, PolarsDataType] = {
     "name": pl.String,
     "skill": pl.String,
     "value": pl.Int64,
 }
 
-_TRAIT_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
+_TRAIT_FRAME_SCHEMA: dict[str, PolarsDataType] = {
     "name": pl.String,
     "trait": pl.String,
 }
 
-_PERK_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
+_PERK_FRAME_SCHEMA: dict[str, PolarsDataType] = {
     "name": pl.String,
     "perk": pl.String,
 }
@@ -224,7 +220,8 @@ class CrewMember:
         """Deserialize a :class:`CrewMember` from a mapping."""
 
         name = str(payload.get("name", ""))
-        morale = float(payload.get("morale", 50.0))
+        morale_raw = payload.get("morale", 50.0)
+        morale = float(morale_raw) if isinstance(morale_raw, (int, float, str)) else 50.0
         needs_payload = payload.get("needs", {})
         decay_payload = payload.get("decay", {})
         needs: dict[NeedName, Need] = {}
@@ -236,8 +233,18 @@ class CrewMember:
                     continue
                 decay = 5.0
                 if isinstance(decay_payload, Mapping):
-                    decay = float(decay_payload.get(key, decay))
-                needs[need_name] = Need(name=need_name, value=float(value), decay_per_day=decay)
+                    decay_raw = decay_payload.get(key, decay)
+                    if isinstance(decay_raw, (int, float, str)):
+                        decay = float(decay_raw)
+                if isinstance(value, (int, float, str)):
+                    need_value = float(value)
+                else:
+                    continue
+                needs[need_name] = Need(
+                    name=need_name,
+                    value=need_value,
+                    decay_per_day=decay,
+                )
         skills_payload = payload.get("skills", {})
         skills: dict[SkillType, int] = {}
         if isinstance(skills_payload, Mapping):
@@ -246,19 +253,21 @@ class CrewMember:
                     skill = SkillType(str(key))
                 except ValueError:
                     continue
-                skills[skill] = int(value)
+                if isinstance(value, (int, float, str)):
+                    skills[skill] = int(float(value))
         relationships_payload = payload.get("relationships", {})
         relationships: dict[str, float] = {}
         if isinstance(relationships_payload, Mapping):
             for key, value in relationships_payload.items():
-                relationships[str(key)] = float(value)
+                if isinstance(value, (int, float, str)):
+                    relationships[str(key)] = float(value)
         traits_payload = payload.get("traits", set())
         traits: set[str] = set()
-        if isinstance(traits_payload, Iterable) and not isinstance(traits_payload, (str, bytes)):
+        if isinstance(traits_payload, Iterable) and not isinstance(traits_payload, str | bytes):
             traits = {str(item) for item in traits_payload}
         perks_payload = payload.get("perks", set())
         perks: set[str] = set()
-        if isinstance(perks_payload, Iterable) and not isinstance(perks_payload, (str, bytes)):
+        if isinstance(perks_payload, Iterable) and not isinstance(perks_payload, str | bytes):
             perks = {str(item) for item in perks_payload}
         return CrewMember(
             name=name,

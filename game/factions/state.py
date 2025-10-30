@@ -6,23 +6,36 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from math import isnan
 
 import polars as pl
+from polars.type_aliases import PolarsDataType
 
-_FACTION_SCHEMA = {"name": pl.String}
-_KNOWN_SITE_SCHEMA = {"faction": pl.String, "site": pl.String}
-_RESOURCE_SCHEMA = {"faction": pl.String, "resource": pl.String, "amount": pl.Float64}
-_PREFERENCE_SCHEMA = {"faction": pl.String, "key": pl.String, "weight": pl.Float64}
-_CARAVAN_SCHEMA = {
+_FACTION_SCHEMA: dict[str, PolarsDataType] = {"name": pl.String}
+_KNOWN_SITE_SCHEMA: dict[str, PolarsDataType] = {"faction": pl.String, "site": pl.String}
+_RESOURCE_SCHEMA: dict[str, PolarsDataType] = {
+    "faction": pl.String,
+    "resource": pl.String,
+    "amount": pl.Float64,
+}
+_PREFERENCE_SCHEMA: dict[str, PolarsDataType] = {
+    "faction": pl.String,
+    "key": pl.String,
+    "weight": pl.Float64,
+}
+_CARAVAN_SCHEMA: dict[str, PolarsDataType] = {
     "identifier": pl.String,
     "faction": pl.String,
     "location": pl.String,
     "days_until_move": pl.Int64,
     "route": pl.List(pl.String),
 }
-_CARAVAN_CARGO_SCHEMA = {"caravan": pl.String, "good": pl.String, "amount": pl.Int64}
+_CARAVAN_CARGO_SCHEMA: dict[str, PolarsDataType] = {
+    "caravan": pl.String,
+    "good": pl.String,
+    "amount": pl.Int64,
+}
 
 
 def _to_list(value: object) -> list[str]:
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes):
         return [str(item) for item in value]
     return []
 
@@ -56,13 +69,13 @@ class FactionLedger:
             name = str(raw_name) if raw_name is not None else ""
             ledger.ensure_faction(name)
             known_sites = payload.get("known_sites")
-            if isinstance(known_sites, Sequence) and not isinstance(known_sites, (str, bytes)):
+            if isinstance(known_sites, Sequence) and not isinstance(known_sites, str | bytes):
                 for site in known_sites:
                     ledger.add_known_site(name, str(site))
             resources = payload.get("resources")
             if isinstance(resources, Mapping):
                 for resource, amount in resources.items():
-                    if isinstance(amount, (int, float, str)):
+                    if isinstance(amount, int | float | str):
                         try:
                             ledger.adjust_resource(name, str(resource), float(amount))
                         except ValueError:
@@ -70,7 +83,7 @@ class FactionLedger:
             preferences = payload.get("resource_preferences")
             if isinstance(preferences, Mapping):
                 for key, weight in preferences.items():
-                    if isinstance(weight, (int, float, str)):
+                    if isinstance(weight, int | float | str):
                         try:
                             ledger.set_resource_preference(name, str(key), float(weight))
                         except ValueError:
@@ -89,7 +102,7 @@ class FactionLedger:
                     ledger.register_caravan(name, identifier, location)
                     ledger.update_caravan_route(identifier, _to_list(data.get("route")))
                     days_raw = data.get("days_until_move")
-                    days_until_move = int(days_raw) if isinstance(days_raw, (int, str)) else 0
+                    days_until_move = int(days_raw) if isinstance(days_raw, int | str) else 0
                     ledger.update_caravan(
                         identifier,
                         days_until_move=days_until_move,
@@ -98,7 +111,7 @@ class FactionLedger:
                     cargo_payload = data.get("cargo")
                     if isinstance(cargo_payload, Mapping):
                         for good, amount in cargo_payload.items():
-                            if isinstance(amount, (int, float, str)):
+                            if isinstance(amount, int | float | str):
                                 try:
                                     ledger.add_caravan_cargo(
                                         identifier, str(good), int(float(amount))
@@ -410,7 +423,7 @@ class CaravanRecord:
     def days_until_move(self) -> int:
         row = self.ledger.caravan_row(self.identifier)
         value = row.get("days_until_move")
-        if isinstance(value, (int, str)):
+        if isinstance(value, int | str):
             try:
                 return int(value)
             except ValueError:  # pragma: no cover - defensive
@@ -429,7 +442,7 @@ class CaravanRecord:
     def advance_day(self) -> str | None:
         row = self.ledger.caravan_row(self.identifier)
         days_raw = row.get("days_until_move")
-        if isinstance(days_raw, (int, str)):
+        if isinstance(days_raw, int | str):
             try:
                 days = int(days_raw)
             except ValueError:  # pragma: no cover - defensive

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import Mapping, cast
 
 import pytest
 
@@ -176,6 +177,7 @@ def test_seasonal_snapshot_round_trip(tmp_path: Path) -> None:
 
     metadata = store_season_snapshot(engine, "slot-b", snapshot, season="spring")
     assert metadata.day == 30
+    assert metadata.summary is not None
     assert "Day 30" in metadata.summary
 
     loaded = load_season_snapshot(engine, "slot-b", 30)
@@ -215,14 +217,18 @@ def test_site_generation_network_round_trip() -> None:
     assert len(restored_sites) == 4
     for site in restored_sites.values():
         assert isinstance(site.site_type, SiteType)
-        for neighbour, cost in site.connections.items():
+        connections = cast(Mapping[str, float], site.connections)
+        for neighbour, cost in connections.items():
             assert neighbour in restored_sites
             assert cost >= 1.0
 
     restored_state = snapshot.to_world_state()
-    graph = restored_state.get("site_graph")
-    assert graph is not None
-    assert set(graph["connections"]) == set(network.connections)
+    graph_obj = restored_state.get("site_graph")
+    assert isinstance(graph_obj, Mapping)
+    raw_connections = graph_obj.get("connections")
+    assert isinstance(raw_connections, Mapping)
+    graph_connections = cast(Mapping[str, object], raw_connections)
+    assert set(graph_connections) == set(network.connections)
 
 
 def test_site_scavenge_uses_gaussian_profile() -> None:

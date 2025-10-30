@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import cast
-
+from rich import box
 from rich.console import RenderableType
-from textual.app import RenderResult
+from rich.panel import Panel
+from rich.table import Table
 from textual.reactive import Reactive, reactive
 from textual.widget import Widget
 
@@ -13,10 +13,6 @@ from ..truck import Truck
 
 
 def _render_truck_panel(truck: Truck, *, title: str) -> RenderableType:
-    from rich import box
-    from rich.panel import Panel
-    from rich.table import Table
-
     table = Table(title=truck.name, expand=True, box=box.SIMPLE_HEAVY)
     table.add_column("Module", style="bold")
     table.add_column("Size", justify="center", no_wrap=True)
@@ -63,10 +59,8 @@ class TruckLayoutView(Widget):
         self.truck = truck
         self.refresh()
 
-    def render(self) -> RenderResult:
-        from rich.panel import Panel
-
-        truck = cast(Truck | None, self.truck)
+    def render(self) -> RenderableType:
+        truck: Truck | None = self.truck
         if truck is None:
             return Panel("No truck connected", title=self.title, border_style="green")
         return _render_truck_panel(truck, title=self.title)

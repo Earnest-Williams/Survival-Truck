@@ -5,17 +5,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from rich.console import RenderableType
-from textual.app import RenderResult
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.table import Table
 from textual.binding import Binding
 from textual.widget import Widget
 
 from .channels import NotificationChannel, TurnLogChannel
 
 
-def _build_stats_panel(stats: Mapping[str, str]):
-    from rich.panel import Panel
-    from rich.table import Table
-
+def _build_stats_panel(stats: Mapping[str, str]) -> RenderableType:
     table = Table.grid(padding=(0, 1), expand=True)
     for key, value in stats.items():
         table.add_row(f"[bold]{key}[/bold]", str(value))
@@ -23,8 +22,6 @@ def _build_stats_panel(stats: Mapping[str, str]):
 
 
 def _placeholder_panel(title: str, message: str, *, border_style: str = "blue") -> RenderableType:
-    from rich.panel import Panel
-
     return Panel(message, title=title, border_style=border_style)
 
 
@@ -66,9 +63,7 @@ class DashboardView(Widget):
         self.notification_channel.clear()
         self.refresh()
 
-    def render(self) -> RenderResult:
-        from rich.layout import Layout
-
+    def render(self) -> RenderableType:
         layout = Layout(name="status")
         stats_mapping: Mapping[str, str] = self._stats
         stats_panel = (
@@ -97,7 +92,7 @@ class TurnLogWidget(Widget):
     def refresh_from_channel(self) -> None:
         self.refresh()
 
-    def render(self) -> RenderResult:
+    def render(self) -> RenderableType:
         return self.log_channel.render_table(title=self.title)
 
 

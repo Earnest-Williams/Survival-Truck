@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -119,7 +120,7 @@ def test_travel_phase_applies_weather_modifier():
     world_state: dict[str, object] = {}
     context = engine.run_turn(command, world_state=world_state)
 
-    travel_reports = world_state["travel_reports"]
+    travel_reports = cast(list[dict[str, Any]], world_state["travel_reports"])
     assert len(travel_reports) == 1
     entry = travel_reports[0]
     assert entry["day"] == context.day
@@ -178,7 +179,8 @@ def test_travel_cost_reflects_weight_and_power():
     assert context.travel_load_factor == pytest.approx(expected_factor)
 
     expected_cost = 20.0 * context.travel_modifier * expected_factor
-    entry = world_state["travel_reports"][0]
+    travel_reports = cast(list[dict[str, Any]], world_state["travel_reports"])
+    entry = travel_reports[0]
     assert entry["load_factor"] == pytest.approx(expected_factor)
     assert entry["adjusted_cost"] == pytest.approx(expected_cost)
 
@@ -216,8 +218,8 @@ def test_maintenance_modifier_increases_required_effort():
     world_state: dict[str, object] = {}
     context = engine.run_turn(command, world_state=world_state)
 
-    reports = world_state.get("maintenance_reports")
-    assert reports
+    reports = cast(list[Any] | None, world_state.get("maintenance_reports"))
+    assert reports is not None
     report = reports[0]
     assert report.cost_multiplier == pytest.approx(context.maintenance_modifier)
     assert report.maintenance_applied == pytest.approx(12.0)

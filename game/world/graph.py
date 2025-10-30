@@ -67,7 +67,7 @@ def build_site_movement_graph(
     return graph
 
 
-def shortest_path_between_sites(graph: WorldGraph, start: str, goal: str) -> Sequence[str]:
+def shortest_path_between_sites(graph: WorldGraph, start: str, goal: str) -> list[str]:
     """Return the lowest-cost path between ``start`` and ``goal`` using A* search."""
 
     if start == goal:
@@ -80,7 +80,7 @@ def shortest_path_between_sites(graph: WorldGraph, start: str, goal: str) -> Seq
             return coord_a.distance_to(coord_b)
         return 0.0
 
-    return nx.astar_path(graph, start, goal, heuristic=heuristic, weight="weight")
+    return list(nx.astar_path(graph, start, goal, heuristic=heuristic, weight="weight"))
 
 
 def path_travel_cost(graph: WorldGraph, path: Sequence[str]) -> float:

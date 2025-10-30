@@ -6,11 +6,12 @@ from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 
 import polars as pl
+from polars.type_aliases import PolarsDataType
 
 from ..crew import SkillCheckResult, SkillType
 from .sites import AttentionCurve, RiskCurve, Site, SiteType
 
-_SITE_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
+_SITE_FRAME_SCHEMA: dict[str, PolarsDataType] = {
     "identifier": pl.String,
     "site_type": pl.String,
     "exploration_percent": pl.Float64,
@@ -27,7 +28,7 @@ _SITE_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
     "settlement_id": pl.String,
 }
 
-_CONNECTION_FRAME_SCHEMA: dict[str, pl.datatypes.DataType] = {
+_CONNECTION_FRAME_SCHEMA: dict[str, PolarsDataType] = {
     "source": pl.String,
     "target": pl.String,
     "cost": pl.Float64,
@@ -82,7 +83,7 @@ class SiteStateFrame:
         if not sites:
             return cls()
         if isinstance(sites, Mapping):
-            iterable = sites.values()
+            iterable: Iterable[Site] = sites.values()
         else:
             iterable = sites
         site_rows = []
@@ -241,7 +242,8 @@ class SiteStateFrame:
         if not self.has_site(identifier):
             return 0.0
         column = "exploration_percent"
-        current = self._sites.filter(pl.col("identifier") == identifier)[column][0]
+        current_raw = self._sites.filter(pl.col("identifier") == identifier)[column][0]
+        current = float(current_raw)
         updated = _clamp_percentage(current + float(amount))
         self._update_site(identifier, {column: updated})
         return updated - current
@@ -250,7 +252,8 @@ class SiteStateFrame:
         if not self.has_site(identifier):
             return 0.0
         column = "scavenged_percent"
-        current = self._sites.filter(pl.col("identifier") == identifier)[column][0]
+        current_raw = self._sites.filter(pl.col("identifier") == identifier)[column][0]
+        current = float(current_raw)
         updated = _clamp_percentage(current + float(amount))
         self._update_site(identifier, {column: updated})
         return updated - current

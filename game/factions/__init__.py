@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Tuple
+from typing import TYPE_CHECKING, Any
 
+from ..world.graph import build_diplomacy_graph
 from .state import CaravanRecord, FactionLedger, FactionRecord
 
 if TYPE_CHECKING:
@@ -39,7 +40,8 @@ class FactionDiplomacy:
     def _key(self, faction_a: str, faction_b: str) -> tuple[str, str]:
         if faction_a == faction_b:
             return (faction_a, faction_b)
-        return tuple(sorted((faction_a, faction_b)))
+        sorted_pair = sorted((faction_a, faction_b))
+        return (sorted_pair[0], sorted_pair[1])
 
     def get_standing(self, faction_a: str, faction_b: str) -> float:
         if faction_a == faction_b:
@@ -87,17 +89,12 @@ class FactionDiplomacy:
 
     def as_graph(self, factions: Iterable[str]) -> nx.Graph:
         """Return a NetworkX graph capturing current standings."""
-
-        import networkx as nx
-
-        from ..world.graph import build_diplomacy_graph
-
         return build_diplomacy_graph(factions, self._relations, neutral_value=self.neutral_value)
 
 
 def __getattr__(name: str) -> Any:
     if name == "FactionAIController":
-        from .ai import FactionAIController
+        from .ai import FactionAIController  # noqa: PLC0415
 
         return FactionAIController
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

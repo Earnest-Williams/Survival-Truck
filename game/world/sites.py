@@ -13,7 +13,7 @@ __all__ = ["AttentionCurve", "RiskCurve", "Site", "SiteType"]
 
 
 def _coerce_float(value: object, fallback: float) -> float:
-    if isinstance(value, (int, float, str)):
+    if isinstance(value, int | float | str):
         try:
             return float(value)
         except ValueError:
@@ -22,7 +22,7 @@ def _coerce_float(value: object, fallback: float) -> float:
 
 
 def _coerce_int(value: object, fallback: int) -> int:
-    if isinstance(value, (int, float, str)):
+    if isinstance(value, int | float | str):
         try:
             return int(float(value))
         except ValueError:
@@ -373,5 +373,3 @@ class Site:
         else:
             self.population = max(0, int(self.population * 0.95))
         return sway
-
-

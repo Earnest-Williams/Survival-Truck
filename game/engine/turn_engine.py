@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ..events.event_queue import EventQueue, QueuedEvent
 from ..time.season_tracker import SeasonProfile, SeasonTracker
@@ -162,7 +162,7 @@ class TurnContext:
             return None
         required = ("cargo_weight", "weight_capacity", "power_output", "power_draw")
         if all(hasattr(stats, attr) for attr in required):
-            return stats
+            return cast("TruckStats", stats)
         return None
 
 
@@ -330,6 +330,8 @@ class TurnEngine:
             or route.get("cost")
             or route.get("distance")
         )
+        if not isinstance(raw_base_cost, (int, float, str)):
+            return
         try:
             base_cost = float(raw_base_cost)
         except (TypeError, ValueError):
@@ -351,7 +353,8 @@ class TurnEngine:
         context.world_state["last_travel_cost"] = record
         context.log(
             "Travel cost adjusted to "
-            f"{adjusted_cost:.2f} (base {base_cost:.2f}, env {context.travel_modifier:.2f}, load {load_factor:.2f})"
+            f"{adjusted_cost:.2f} "
+            f"(base {base_cost:.2f}, env {context.travel_modifier:.2f}, load {load_factor:.2f})"
         )
 
     def _record_turn(self, context: TurnContext) -> None:

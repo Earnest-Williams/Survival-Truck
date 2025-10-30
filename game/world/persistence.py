@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import (
+    Any,
     TypeVar,
+    cast,
 )
 
 import msgpack
@@ -60,10 +62,10 @@ def _now() -> datetime:
 
 def _pack_model(model: BaseModel) -> bytes:
     payload = model.model_dump(mode="json")
-    return msgpack.packb(payload, use_bin_type=True)
+    return cast(bytes, msgpack.packb(payload, use_bin_type=True))
 
 
-def _unpack_model(payload: bytes, model_type: type[_M]) -> _M:
+def _unpack_model(payload: bytes, model_type: type[_M]) -> _M:  # noqa: UP047
     data = msgpack.unpackb(payload, raw=False)
     return model_type.model_validate(data)
 
@@ -299,7 +301,7 @@ def iter_daily_diffs(
     statement = (
         select(WorldDailyDiffRecord)
         .where(WorldDailyDiffRecord.slot == slot)
-        .order_by(WorldDailyDiffRecord.day)
+        .order_by(cast(Any, WorldDailyDiffRecord.day))
     )
     with Session(engine) as session:
         for record in session.exec(statement):
@@ -314,7 +316,7 @@ def iter_season_snapshots(engine: Engine, slot: str) -> Iterator[SeasonSnapshotE
     statement = (
         select(WorldSeasonSnapshotRecord)
         .where(WorldSeasonSnapshotRecord.slot == slot)
-        .order_by(WorldSeasonSnapshotRecord.day)
+        .order_by(cast(Any, WorldSeasonSnapshotRecord.day))
     )
     with Session(engine) as session:
         for record in session.exec(statement):
