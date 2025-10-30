@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from game.crew import Crew, CrewMember, Need, NeedName, TraitImpact
+from game.crew import Crew, CrewMember, Need, NeedName, TraitImpact  # noqa: E402
 
 
 def test_crew_member_serialization_persists_traits() -> None:

@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Iterator, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, Tuple
 
 from .state import CaravanRecord, FactionLedger, FactionRecord
+
+if TYPE_CHECKING:
+    import networkx as nx
+
+__all__ = [
+    "CaravanRecord",
+    "Caravan",
+    "Faction",
+    "FactionAIController",
+    "FactionDiplomacy",
+    "FactionLedger",
+    "FactionRecord",
+]
 
 # Backwards-compatible handles used in tests and docs.
 Caravan = CaravanRecord
@@ -71,7 +84,7 @@ class FactionDiplomacy:
             if value <= threshold:
                 yield a, b
 
-    def as_graph(self, factions: Iterable[str]) -> "nx.Graph":
+    def as_graph(self, factions: Iterable[str]) -> nx.Graph:
         """Return a NetworkX graph capturing current standings."""
 
         import networkx as nx
@@ -83,14 +96,9 @@ class FactionDiplomacy:
         )
 
 
-from .ai import FactionAIController
+def __getattr__(name: str) -> Any:
+    if name == "FactionAIController":
+        from .ai import FactionAIController
 
-__all__ = [
-    "CaravanRecord",
-    "Caravan",
-    "Faction",
-    "FactionAIController",
-    "FactionDiplomacy",
-    "FactionLedger",
-    "FactionRecord",
-]
+        return FactionAIController
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

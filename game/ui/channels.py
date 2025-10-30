@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Sequence
 
 from ..events.event_queue import QueuedEvent
+
+
+if TYPE_CHECKING:
+    from ..engine.turn_engine import TurnContext
 
 
 @dataclass
