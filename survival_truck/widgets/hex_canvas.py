@@ -161,9 +161,10 @@ class HexCanvas(Widget):
         q_min = oq - v.radius_q
         r_min = or_ - v.radius_r
 
-        col = max(0, x // 2)
         row = max(0, y)
         r = r_min + row
         stagger = ((r - r_min) % 2) == 1
-        q = q_min + col - (1 if stagger else 0)
+        x_adjusted = max(0, x - (1 if stagger else 0))
+        col = x_adjusted // 2
+        q = q_min + col
         return (q, r)
