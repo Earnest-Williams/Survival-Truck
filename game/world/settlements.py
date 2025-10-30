@@ -15,6 +15,24 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))
 
 
+def _coerce_float(value: object, fallback: float) -> float:
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _coerce_int(value: object, fallback: int) -> int:
+    if isinstance(value, (int, float, str)):
+        try:
+            return int(float(value))
+        except ValueError:
+            return fallback
+    return fallback
+
+
 class SettlementPayload(TypedDict, total=False):
     """Serialized representation of a :class:`Settlement`."""
 
@@ -91,19 +109,24 @@ class Settlement:
 
     @staticmethod
     def from_dict(payload: SettlementPayload | Mapping[str, object]) -> Settlement:
+        if not isinstance(payload, Mapping):
+            raise TypeError("Settlement payload must be a mapping")
         resources_payload = payload.get("resources", {})
         resources: dict[str, int] = {}
         if isinstance(resources_payload, Mapping):
             for key, value in resources_payload.items():
-                resources[str(key)] = int(value)
+                resources[str(key)] = _coerce_int(value, 0)
+        identifier_raw = payload.get("identifier")
+        site_raw = payload.get("site_id")
+        name_raw = payload.get("name", "Settlement")
         return Settlement(
-            identifier=str(payload.get("identifier")),
-            site_id=str(payload.get("site_id")),
-            name=str(payload.get("name", "Settlement")),
-            population=int(payload.get("population", 0)),
-            morale=float(payload.get("morale", 55.0)),
-            prosperity=float(payload.get("prosperity", 0.1)),
-            security=float(payload.get("security", 0.0)),
+            identifier=str(identifier_raw) if identifier_raw is not None else "",
+            site_id=str(site_raw) if site_raw is not None else "",
+            name=str(name_raw),
+            population=_coerce_int(payload.get("population"), 0),
+            morale=_coerce_float(payload.get("morale"), 55.0),
+            prosperity=_coerce_float(payload.get("prosperity"), 0.1),
+            security=_coerce_float(payload.get("security"), 0.0),
             resources=resources,
         )
 
@@ -202,3 +225,5 @@ class SettlementManager:
 
 
 __all__ = ["Settlement", "SettlementManager"]
+
+
