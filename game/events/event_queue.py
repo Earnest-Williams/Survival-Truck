@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import heapq
-from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import count
 from typing import Any
@@ -51,7 +50,7 @@ class EventQueue:
 
         return [entry[2] for entry in sorted(self._heap) if entry[0] == day]
 
-    def pop_events_for_day(self, day: int) -> Iterable[QueuedEvent]:
+    def pop_events_for_day(self, day: int) -> list[QueuedEvent]:
         """Retrieve and remove events scheduled for the provided day."""
 
         popped: list[QueuedEvent] = []

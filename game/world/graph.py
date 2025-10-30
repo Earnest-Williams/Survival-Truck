@@ -7,7 +7,6 @@ from itertools import combinations
 from typing import (
     TYPE_CHECKING,
     Any,
-    TypeAlias,
     cast,
 )
 
@@ -25,9 +24,10 @@ else:  # pragma: no cover - runtime fallback for typing only
     EsperWorld = Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    WorldGraph: TypeAlias = nx.Graph[str]
+    type WorldGraph = nx.Graph[str]
 else:  # pragma: no cover - runtime alias without subscripting
-    WorldGraph: TypeAlias = nx.Graph
+    # at runtime, unparameterised graph type
+    type WorldGraph = nx.Graph
 
 
 def build_site_movement_graph(

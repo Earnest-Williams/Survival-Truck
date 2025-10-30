@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Hashable, Iterable, Mapping, Sequence
-from typing import TypeAlias, TypedDict, cast
+from typing import TypedDict, cast
 
 import networkx as nx
 import polars as pl
@@ -30,7 +30,7 @@ class SitePositionRecord(TypedDict, total=False):
     r: int | str
 
 
-CoordLike: TypeAlias = HexCoord | Mapping[str, int | str] | Sequence[int | str] | str
+type CoordLike = HexCoord | Mapping[str, int | str] | Sequence[int | str] | str
 SiteCollectionInput = Mapping[str, Site] | Iterable[Site]
 SitePositionPayload = Mapping[str, CoordLike]
 SiteConnectionsPayload = Mapping[str, Sequence[str | int]]

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .rng import WorldRandomness
 
 
 class DifficultyLevel(str, Enum):
@@ -75,7 +78,7 @@ class WorldRandomnessSettings(BaseModel):
     seed: int = Field(default=0, ge=0)
     salt: str = Field(default="world")
 
-    def factory(self):  # type: ignore[override]
+    def factory(self) -> WorldRandomness:
         """Instantiate a :class:`~game.world.rng.WorldRandomness` helper."""
 
         from .rng import WorldRandomness
@@ -112,7 +115,7 @@ class WorldConfig(BaseModel):
 
         return self.randomness.seed
 
-    def randomness_factory(self):  # type: ignore[override]
+    def randomness_factory(self) -> WorldRandomness:
         """Return a new :class:`~game.world.rng.WorldRandomness` instance."""
 
         return self.randomness.factory()

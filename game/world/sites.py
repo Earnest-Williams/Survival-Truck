@@ -150,28 +150,28 @@ class Site:
             raise ValueError("population cannot be negative")
         if not isinstance(self.site_type, SiteType):
             try:
-                self.site_type = SiteType(str(self.site_type))  # type: ignore[assignment]
+                self.site_type = SiteType(str(self.site_type))
             except ValueError as exc:  # pragma: no cover - defensive branch
                 raise ValueError(f"Unknown site type: {self.site_type}") from exc
         if self.controlling_faction is not None:
             self.controlling_faction = str(self.controlling_faction)
         if not isinstance(self.attention_curve, AttentionCurve):
             if isinstance(self.attention_curve, Mapping):
-                self.attention_curve = AttentionCurve.from_dict(self.attention_curve)  # type: ignore[assignment]
+                self.attention_curve = AttentionCurve.from_dict(self.attention_curve)
             else:
-                self.attention_curve = AttentionCurve()  # type: ignore[assignment]
+                self.attention_curve = AttentionCurve()
         if not isinstance(self.risk_curve, RiskCurve):
             if isinstance(self.risk_curve, Mapping):
-                self.risk_curve = RiskCurve.from_dict(self.risk_curve)  # type: ignore[assignment]
+                self.risk_curve = RiskCurve.from_dict(self.risk_curve)
             else:
-                self.risk_curve = RiskCurve()  # type: ignore[assignment]
+                self.risk_curve = RiskCurve()
         if self.settlement_id is not None and not isinstance(self.settlement_id, str):
             raise TypeError("settlement_id must be a string or None")
         self.connections = self._normalise_connections(self.identifier, self.connections)
 
     @staticmethod
     def _clamp_percentage(value: float) -> float:
-        if not isinstance(value, (int, float)):
+        if not isinstance(value, int | float):
             raise TypeError("percentage values must be numeric")
         return max(0.0, min(float(value), 100.0))
 

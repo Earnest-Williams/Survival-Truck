@@ -8,6 +8,7 @@ from typing import (
     Any,
     Protocol,
     TypeVar,
+    cast,
 )
 
 import esper
@@ -43,9 +44,10 @@ else:  # pragma: no cover - fallback for stripped-down esper installs
 
         def component_for_entity(self, entity: int, component_type: type[T]) -> T:
             try:
-                return self._components[entity][component_type]  # type: ignore[return-value]
+                component = self._components[entity][component_type]
             except KeyError as exc:  # pragma: no cover - defensive branch
                 raise KeyError(component_type) from exc
+            return cast(T, component)
 
 
 from ..crew import Crew
@@ -172,9 +174,9 @@ class GameWorld:
         """Register ``system`` to execute during ``phase`` with ``priority`` ordering."""
 
         if hasattr(system, "process") and callable(system.process):
-            callback = system.process  # type: ignore[assignment]
+            callback = cast(SystemCallback, system.process)
         elif callable(system):
-            callback = system  # type: ignore[assignment]
+            callback = cast(SystemCallback, system)
         else:  # pragma: no cover - defensive branch
             raise TypeError("system must be callable or expose a process() method")
 

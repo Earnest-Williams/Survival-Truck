@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from rich.console import RenderableType
+from textual.app import RenderResult
 from textual.binding import Binding
 from textual.widget import Widget
 
@@ -65,7 +66,7 @@ class DashboardView(Widget):
         self.notification_channel.clear()
         self.refresh()
 
-    def render(self):  # type: ignore[override]
+    def render(self) -> RenderResult:
         from rich.layout import Layout
 
         layout = Layout(name="status")
@@ -96,7 +97,7 @@ class TurnLogWidget(Widget):
     def refresh_from_channel(self) -> None:
         self.refresh()
 
-    def render(self):  # type: ignore[override]
+    def render(self) -> RenderResult:
         return self.log_channel.render_table(title=self.title)
 
 

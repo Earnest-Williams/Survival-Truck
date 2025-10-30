@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import cast
 
 from rich.console import RenderableType
+from textual.app import RenderResult
 from textual.reactive import Reactive, reactive
 from textual.widget import Widget
 
@@ -62,7 +63,7 @@ class TruckLayoutView(Widget):
         self.truck = truck
         self.refresh()
 
-    def render(self):  # type: ignore[override]
+    def render(self) -> RenderResult:
         from rich.panel import Panel
 
         truck = cast(Truck | None, self.truck)
