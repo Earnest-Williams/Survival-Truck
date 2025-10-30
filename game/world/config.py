@@ -81,7 +81,7 @@ class WorldRandomnessSettings(BaseModel):
     def factory(self) -> WorldRandomness:
         """Instantiate a :class:`~game.world.rng.WorldRandomness` helper."""
 
-        from .rng import WorldRandomness
+        from .rng import WorldRandomness  # noqa: PLC0415
 
         return WorldRandomness(seed=self.seed)
 

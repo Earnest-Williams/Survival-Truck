@@ -479,17 +479,19 @@ class FactionAIController:
         hostile_pairs: Sequence[tuple[str, str]],
     ) -> None:
         losses: dict[str, int] = {}
-        for faction_a, faction_b in hostile_pairs:
-            attacker = self._select_caravan_from_faction(caravans, faction_a)
-            defender = self._select_caravan_from_faction(caravans, faction_b)
+        for primary_faction, rival_faction in hostile_pairs:
+            attacker = self._select_caravan_from_faction(caravans, primary_faction)
+            defender = self._select_caravan_from_faction(caravans, rival_faction)
             if attacker is None or defender is None:
                 continue
+            attacker_name = primary_faction
+            defender_name = rival_faction
             if float(self.rng.random()) < 0.5:
                 attacker, defender = defender, attacker
-                faction_a, faction_b = faction_b, faction_a
+                attacker_name, defender_name = defender_name, attacker_name
             lost_value = defender.unload_all_cargo()
-            losses[faction_b] = losses.get(faction_b, 0) + lost_value + 1
-            self.diplomacy.adjust_standing(faction_a, faction_b, -3.0)
+            losses[defender_name] = losses.get(defender_name, 0) + lost_value + 1
+            self.diplomacy.adjust_standing(attacker_name, defender_name, -3.0)
         for faction_name, loss in losses.items():
             faction = self.factions.get(faction_name)
             if faction is None:
@@ -502,23 +504,29 @@ class FactionAIController:
         candidates = [caravan for caravan in caravans if caravan.faction_name == faction_name]
         if not candidates:
             return None
-        return self.rng.choice(candidates)
+        index = int(self.rng.integers(0, len(candidates)))
+        return candidates[index]
 
-    def _coerce_coord(self, value: CoordLike) -> HexCoord | None:
+    def _coerce_coord(self, value: CoordLike) -> HexCoord | None:  # noqa: PLR0911
         if isinstance(value, HexCoord):
             return value
         if isinstance(value, Mapping):
             q = value.get("q")
             r = value.get("r")
-            try:
-                return HexCoord(int(q), int(r))
-            except (TypeError, ValueError):
-                return None
+            if isinstance(q, (int, str)) and isinstance(r, (int, str)):
+                try:
+                    return HexCoord(int(q), int(r))
+                except ValueError:
+                    return None
+            return None
         if isinstance(value, Sequence) and len(value) == 2:
-            try:
-                return HexCoord(int(value[0]), int(value[1]))
-            except (TypeError, ValueError):
-                return None
+            left, right = value[0], value[1]
+            if isinstance(left, (int, str)) and isinstance(right, (int, str)):
+                try:
+                    return HexCoord(int(left), int(right))
+                except ValueError:
+                    return None
+            return None
         if isinstance(value, str) and "," in value:
             left, right = value.split(",", 1)
             try:

@@ -13,11 +13,13 @@ from typing import (
 
 import esper
 
-if hasattr(esper, "World"):
-    EsperWorld = esper.World
-else:  # pragma: no cover - fallback for stripped-down esper installs
+EsperWorld: type[Any]
 
-    class EsperWorld:
+try:
+    EsperWorld = esper.World
+except AttributeError:  # pragma: no cover - fallback for stripped-down esper installs
+
+    class _EsperWorldFallback:
         """Minimal stand-in for :class:`esper.World` used in tests."""
 
         def __init__(self) -> None:
@@ -48,6 +50,8 @@ else:  # pragma: no cover - fallback for stripped-down esper installs
             except KeyError as exc:  # pragma: no cover - defensive branch
                 raise KeyError(component_type) from exc
             return cast(T, component)
+
+    EsperWorld = _EsperWorldFallback
 
 
 from ..crew import Crew
@@ -109,7 +113,7 @@ class GameWorld:
     """Wrapper around :class:`esper.World` providing ordered system execution."""
 
     def __init__(self) -> None:
-        self._world = EsperWorld()
+        self._world: Any = EsperWorld()
         self._singletons: dict[type[Any], int] = {}
         self._systems: dict[PhaseName, list[_SystemEntry]] = {}
         self._system_counter = 0
@@ -118,7 +122,8 @@ class GameWorld:
     def create_entity(self, *components: object) -> int:
         """Create an entity with the provided components."""
 
-        return self._world.create_entity(*components)
+        entity_id = self._world.create_entity(*components)
+        return int(entity_id)
 
     def add_component(self, entity: int, component: object) -> None:
         """Attach ``component`` to ``entity`` inside the world."""
@@ -147,7 +152,8 @@ class GameWorld:
         if entity is None:
             return None
         try:
-            return self._world.component_for_entity(entity, component_type)
+            component = self._world.component_for_entity(entity, component_type)
+            return cast(T, component)
         except KeyError:
             self._singletons.pop(component_type, None)
             return None
@@ -173,10 +179,11 @@ class GameWorld:
     ) -> None:
         """Register ``system`` to execute during ``phase`` with ``priority`` ordering."""
 
+        callback: SystemCallback
         if hasattr(system, "process") and callable(system.process):
-            callback = cast(SystemCallback, system.process)
+            callback = system.process
         elif callable(system):
-            callback = cast(SystemCallback, system)
+            callback = system
         else:  # pragma: no cover - defensive branch
             raise TypeError("system must be callable or expose a process() method")
 
@@ -194,7 +201,7 @@ class GameWorld:
 
     # ------------------------------------------------------------------
     @property
-    def raw(self) -> EsperWorld:
+    def raw(self) -> Any:
         """Expose the underlying :class:`esper.World` instance."""
 
         return self._world

@@ -1,4 +1,6 @@
 import math
+from collections.abc import Mapping
+from typing import cast
 
 from game.world.graph import (
     allied_factions,
@@ -30,7 +32,9 @@ def test_site_movement_graph_uses_astar_shortest_path() -> None:
     }
 
     graph = build_site_movement_graph(
-        site_positions, terrain_costs=terrain_costs, connections=connections
+        site_positions,
+        terrain_costs=cast(Mapping[object, float], terrain_costs),
+        connections=connections,
     )
 
     path = list(shortest_path_between_sites(graph, "alpha", "gamma"))

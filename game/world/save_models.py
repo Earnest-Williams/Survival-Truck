@@ -16,7 +16,7 @@ _SIMPLE_TYPES = (str, int, float, bool)
 _DROP = object()
 
 
-def _coerce_json(value: object) -> object:
+def _coerce_json(value: object) -> object:  # noqa: PLR0911
     """Convert ``value`` into a msgpack-friendly structure or ``_DROP``."""
 
     if value is None or isinstance(value, _SIMPLE_TYPES):
@@ -33,7 +33,7 @@ def _coerce_json(value: object) -> object:
         if result or not value or not dropped:
             return result
         return _DROP
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         result_list: list[object] = []
         dropped = False
         for item in value:
@@ -45,7 +45,7 @@ def _coerce_json(value: object) -> object:
         if result_list or not value or not dropped:
             return result_list
         return _DROP
-    if is_dataclass(value):
+    if is_dataclass(value) and not isinstance(value, type):
         return _coerce_json(asdict(value))
     if hasattr(value, "to_dict") and callable(value.to_dict):
         return _coerce_json(value.to_dict())
@@ -67,7 +67,7 @@ class HexPointModel(BaseModel):
     def _coerce_tuple(cls, value: object) -> Mapping[str, object] | object:
         if isinstance(value, Mapping):
             return value
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
             sequence = list(value)
             if len(sequence) >= 2:
                 return {"q": int(sequence[0]), "r": int(sequence[1])}
@@ -88,7 +88,9 @@ class TravelReportModel(BaseModel):
     @field_validator("base_cost", "modifier", "load_factor", "adjusted_cost")
     @classmethod
     def _ensure_float(cls, value: object) -> float:
-        return float(value)
+        if isinstance(value, (int, float, str)):
+            return float(value)
+        raise TypeError("value must be numeric")
 
 
 class WeatherRecordModel(BaseModel):
@@ -104,7 +106,9 @@ class WeatherRecordModel(BaseModel):
     @field_validator("travel_modifier", "maintenance_modifier")
     @classmethod
     def _ensure_float(cls, value: object) -> float:
-        return float(value)
+        if isinstance(value, (int, float, str)):
+            return float(value)
+        raise TypeError("value must be numeric")
 
 
 class ResourceLogEntryModel(BaseModel):
@@ -125,7 +129,7 @@ class ResourceLogEntryModel(BaseModel):
             return {}
         if isinstance(value, Mapping):
             return value
-        if is_dataclass(value):
+        if is_dataclass(value) and not isinstance(value, type):
             return asdict(value)
         if hasattr(value, "__dict__"):
             return vars(value)
@@ -140,7 +144,10 @@ class ResourceLogEntryModel(BaseModel):
             raise TypeError("resource map must be a mapping of resource ids to quantities")
         normalised: dict[str, float] = {}
         for key, amount in value.items():
-            normalised[str(key)] = float(amount)
+            if isinstance(amount, (int, float, str)):
+                normalised[str(key)] = float(amount)
+            else:
+                raise TypeError("resource quantities must be numeric")
         return normalised
 
     @field_validator("notes", mode="before")
@@ -150,7 +157,9 @@ class ResourceLogEntryModel(BaseModel):
             return {}
         if not isinstance(value, Mapping):
             coerced = _coerce_json(value)
-            return {} if coerced is _DROP or not isinstance(coerced, Mapping) else coerced
+            if coerced is _DROP or not isinstance(coerced, Mapping):
+                return {}
+            return {str(key): entry for key, entry in coerced.items()}
         result: dict[str, object] = {}
         for key, entry in value.items():
             coerced = _coerce_json(entry)
@@ -181,7 +190,10 @@ class SiteGraphModel(BaseModel):
                 continue
             inner: dict[str, float] = {}
             for neighbour, cost in mapping.items():
-                inner[str(neighbour)] = float(cost)
+                if isinstance(cost, (int, float, str)):
+                    inner[str(neighbour)] = float(cost)
+                else:
+                    raise TypeError("connection costs must be numeric")
             result[str(key)] = inner
         return result
 
@@ -210,7 +222,7 @@ class WorldStatePayload(BaseModel):
     def _normalise_notes(cls, value: object) -> list[str]:
         if value in (None, []):
             return []
-        if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        if not isinstance(value, Sequence) or isinstance(value, str | bytes | bytearray):
             return [str(value)]
         return [str(entry) for entry in value]
 
@@ -223,7 +235,10 @@ class WorldStatePayload(BaseModel):
             raise TypeError("progress must be a mapping of task names to values")
         normalised: dict[str, float] = {}
         for key, amount in value.items():
-            normalised[str(key)] = float(amount)
+            if isinstance(amount, (int, float, str)):
+                normalised[str(key)] = float(amount)
+            else:
+                raise TypeError("progress values must be numeric")
         return normalised
 
     @field_validator("planned_route", "module_orders", "crew_assignments", mode="before")
@@ -231,7 +246,7 @@ class WorldStatePayload(BaseModel):
     def _normalise_strings(cls, value: object) -> list[str]:
         if value in (None, []):
             return []
-        if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        if not isinstance(value, Sequence) or isinstance(value, str | bytes | bytearray):
             return [str(value)]
         return [str(entry) for entry in value]
 

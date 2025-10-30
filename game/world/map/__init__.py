@@ -131,7 +131,7 @@ class BiomeNoise:
 
     def value(self, coord: HexCoord) -> float:
         sample = self._noise.noise2(coord.q * self._frequency, coord.r * self._frequency)
-        return 0.5 + 0.5 * sample
+        return float(0.5 + 0.5 * sample)
 
     def biome(self, coord: HexCoord) -> BiomeType:
         sample = self.value(coord)
@@ -230,7 +230,7 @@ class SiteNetwork:
         }
 
 
-def generate_site_network(
+def generate_site_network(  # noqa: PLR0915
     randomness: WorldRandomness,
     *,
     site_count: int = 8,
@@ -267,7 +267,7 @@ def generate_site_network(
     if len(positions) < site_count:
         raise RuntimeError("failed to place the requested number of sites within radius")
 
-    from ..sites import AttentionCurve, Site, SiteType
+    from ..sites import AttentionCurve, Site, SiteType  # noqa: PLC0415
 
     site_type_weights: dict[SiteType, float] = {
         SiteType.CITY: 0.18,
@@ -325,21 +325,23 @@ def generate_site_network(
 
     connections: dict[str, dict[str, float]] = {identifier: {} for identifier in positions}
     for identifier, origin in positions.items():
-        neighbours = [
+        neighbour_distances: list[tuple[str, int]] = [
             (other_id, origin.distance_to(target))
             for other_id, target in positions.items()
             if other_id != identifier
         ]
-        neighbours.sort(key=lambda item: item[1])
-        max_edges = 2 if len(neighbours) > 2 else len(neighbours)
-        for neighbour_id, distance in neighbours[:max_edges]:
+        neighbour_distances.sort(key=lambda item: item[1])
+        max_edges = 2 if len(neighbour_distances) > 2 else len(neighbour_distances)
+        neighbour_costs: dict[str, float] = {}
+        for neighbour_id, distance in neighbour_distances[:max_edges]:
             cost = float(max(1, distance))
-            connections[identifier][neighbour_id] = cost
+            neighbour_costs[neighbour_id] = cost
             connections.setdefault(neighbour_id, {})[identifier] = cost
+        connections[identifier].update(neighbour_costs)
 
-    for identifier, neighbours in connections.items():
+    for identifier, neighbour_costs in connections.items():
         site = sites[identifier]
-        for neighbour_id, cost in neighbours.items():
+        for neighbour_id, cost in neighbour_costs.items():
             site.connect(neighbour_id, cost=cost)
 
     ordered_connections = {

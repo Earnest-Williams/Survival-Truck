@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import tomllib
 from pathlib import Path
 
@@ -10,13 +12,13 @@ import game
 meta: dict[str, str] = {}
 
 
-def _load_pyproject() -> dict:
+def _load_pyproject() -> dict[str, object]:
     with Path("pyproject.toml").open("rb") as handle:
         return tomllib.load(handle)
 
 
 def test_pyproject_declares_expected_metadata() -> None:
-    pyproject = _load_pyproject()
+    pyproject = cast(dict[str, Any], _load_pyproject())
     poetry = pyproject["tool"]["poetry"]
 
     assert poetry["name"] == "survival-truck"

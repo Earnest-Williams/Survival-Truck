@@ -6,7 +6,9 @@ from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
-from textual.app import RenderResult
+from rich.console import RenderableType
+from rich.panel import Panel
+from rich.text import Text
 from textual.binding import Binding
 from textual.message import Message
 from textual.message_pump import MessagePump
@@ -36,10 +38,7 @@ def _render_hex_map(
     unknown_symbol: str,
     title: str,
     highlight_map: Mapping[Coordinate, str],
-):
-    from rich.panel import Panel
-    from rich.text import Text
-
+) -> RenderableType:
     lines: list[str] = []
     for row_index, row in enumerate(grid):
         prefix = " " if row_index % 2 else ""
@@ -126,7 +125,8 @@ class HexMapView(Widget):
     def grid_data(self) -> GridData:
         """Return the current reactive grid value."""
 
-        return cast(GridData, self._grid)
+        grid_value: GridData = self._grid
+        return grid_value
 
     @grid_data.setter
     def grid_data(self, grid: GridData) -> None:
@@ -136,7 +136,7 @@ class HexMapView(Widget):
         self.grid_data = _normalise_map(grid)
         max_row = max(len(grid) - 1, 0)
         max_col = max((len(row) for row in grid), default=1) - 1 if grid else 0
-        cursor = cast(Coordinate, self.cursor)
+        cursor: Coordinate = self.cursor
         row = min(cursor[0], max_row)
         col = min(cursor[1], max_col)
         self.cursor = (row, col)
@@ -150,7 +150,7 @@ class HexMapView(Widget):
         grid = self.grid_data
         if not grid:
             return
-        cursor = cast(Coordinate, self.cursor)
+        cursor: Coordinate = self.cursor
         row, col = cursor
         max_row = len(grid) - 1
         max_col = max((len(r) for r in grid), default=1) - 1 if grid else 0
@@ -177,7 +177,7 @@ class HexMapView(Widget):
         grid = self.grid_data
         if not grid:
             return
-        cursor = cast(Coordinate, self.cursor)
+        cursor: Coordinate = self.cursor
         row, col = cursor
         terrain = grid[row][col] if row < len(grid) and col < len(grid[row]) else "?"
         self.post_message(self.CoordinateSelected(self, MapSelection((row, col), terrain)))
@@ -186,18 +186,18 @@ class HexMapView(Widget):
         grid = self.grid_data
         if not grid:
             return
-        cursor = cast(Coordinate, self.cursor)
+        cursor: Coordinate = self.cursor
         row, col = cursor
         if row >= len(grid) or col >= len(grid[row]):
             return
         terrain = grid[row][col]
         self.post_message(self.CoordinateSelected(self, MapSelection((row, col), terrain)))
 
-    def render(self) -> RenderResult:
+    def render(self) -> RenderableType:
         highlight_map: dict[Coordinate, str] = dict(self._highlights)
         grid = self.grid_data
         if grid:
-            cursor = cast(Coordinate, self.cursor)
+            cursor: Coordinate = self.cursor
             row, col = cursor
             if row < len(grid) and col < len(grid[row]):
                 terrain = grid[row][col]

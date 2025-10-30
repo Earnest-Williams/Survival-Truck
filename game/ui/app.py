@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -46,7 +47,7 @@ class AppConfig:
     world_seed: int = 42
 
 
-class SurvivalTruckApp(App):
+class SurvivalTruckApp(App[Any]):
     """Interactive Textual application for Survival Truck."""
 
     CSS = """
@@ -113,7 +114,7 @@ class SurvivalTruckApp(App):
         if config is None:
             config = self._create_demo_config()
         self._map_data: list[list[str]] = [list(row) for row in config.map_data]
-        self.world_state: MutableMapping[str, object] = config.world_state
+        self.world_state: dict[str, object] = dict(config.world_state)
         self.world_randomness = WorldRandomness(seed=config.world_seed)
         self.world_state.setdefault("randomness", self.world_randomness)
 

@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from textual.app import RenderResult
+from rich.console import RenderableType
+from rich.panel import Panel
+from rich.table import Table
 from textual.binding import Binding
 from textual.message import Message
 from textual.widget import Widget
@@ -97,10 +99,7 @@ class ControlPanel:
         self.clear_crew()
 
     # ------------------------------------------------------------------
-    def render(self, *, title: str | None = None):
-        from rich.panel import Panel
-        from rich.table import Table
-
+    def render(self, *, title: str | None = None) -> RenderableType:
         table = Table.grid(padding=(0, 1), expand=True)
         route = " -> ".join(self._route_waypoints) if self._route_waypoints else "(no route)"
         table.add_row("[bold]Route[/bold]", route)
@@ -145,7 +144,7 @@ class ControlPanelWidget(Widget):
         self.control_panel = panel or ControlPanel()
         self.title = title
 
-    def render(self) -> RenderResult:
+    def render(self) -> RenderableType:
         return self.control_panel.render(title=self.title)
 
     def action_reset_plan(self) -> None:
