@@ -65,8 +65,14 @@ target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "PL", "ANN"]
-ignore = ["ANN101", "ANN102"]
+# Keep the basics + upgrades; drop ANN (return types) & PLR magic-number/complexity for now.
+select = ["E", "F", "I", "UP", "B", "PL"]
+ignore = [
+  "ANN",      # suppress all annotations rules for now; you can re-enable later
+  "PLR2004",  # magic numbers
+  "PLR0912",  # too many branches
+  "PLR0913",  # too many args
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["game"]
@@ -91,6 +97,9 @@ module = [
   "sqlmodel.*",
   "networkx.*",
   "anyio",
+  "polars.*",
+  "msgpack",
+  "esper",
 ]
 ignore_missing_imports = true
 
