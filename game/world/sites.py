@@ -12,6 +12,24 @@ from ..crew import SkillCheckResult, SkillType
 __all__ = ["AttentionCurve", "RiskCurve", "Site", "SiteType"]
 
 
+def _coerce_float(value: object, fallback: float) -> float:
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _coerce_int(value: object, fallback: int) -> int:
+    if isinstance(value, (int, float, str)):
+        try:
+            return int(float(value))
+        except ValueError:
+            return fallback
+    return fallback
+
+
 class SiteType(str, Enum):
     """Enumeration of canonical site archetypes."""
 
@@ -44,13 +62,13 @@ class AttentionCurve:
         return {"peak": self.peak, "mu": self.mu, "sigma": self.sigma}
 
     @staticmethod
-    def from_dict(payload: dict[str, float]) -> AttentionCurve:
+    def from_dict(payload: Mapping[str, object]) -> AttentionCurve:
         """Create an :class:`AttentionCurve` instance from a mapping."""
 
         return AttentionCurve(
-            peak=float(payload.get("peak", 1.0)),
-            mu=float(payload.get("mu", 50.0)),
-            sigma=float(payload.get("sigma", 15.0)),
+            peak=_coerce_float(payload.get("peak"), 1.0),
+            mu=_coerce_float(payload.get("mu"), 50.0),
+            sigma=_coerce_float(payload.get("sigma"), 15.0),
         )
 
     def value_at(self, t: float) -> float:
@@ -94,7 +112,7 @@ class RiskCurve:
         }
 
     @staticmethod
-    def from_dict(payload: Mapping[str, float]) -> RiskCurve:
+    def from_dict(payload: Mapping[str, object]) -> RiskCurve:
         """Create a :class:`RiskCurve` instance from a mapping."""
 
         def _get(key: str, fallback: float) -> float:
@@ -109,13 +127,13 @@ class RiskCurve:
                     value = payload.get("t0", fallback)
                 else:
                     value = fallback
-            return float(value)
+            return _coerce_float(value, fallback)
 
         return RiskCurve(
             maximum=_get("maximum", 1.0),
             growth_rate=_get("growth_rate", 0.08),
             midpoint=_get("midpoint", 55.0),
-            floor=float(payload.get("floor", 0.0)),
+            floor=_coerce_float(payload.get("floor"), 0.0),
         )
 
     def value_at(self, t: float) -> float:
@@ -202,16 +220,19 @@ class Site:
         }
 
     @staticmethod
-    def from_dict(payload: dict[str, object]) -> Site:
+    def from_dict(payload: Mapping[str, object]) -> Site:
         """Create a :class:`Site` from a serialized mapping."""
+
+        if not isinstance(payload, Mapping):
+            raise TypeError("Site payload must be a mapping")
 
         attention_payload = payload.get("attention_curve", {})
         if isinstance(attention_payload, AttentionCurve):
             attention_curve = attention_payload
-        elif isinstance(attention_payload, dict):
+        elif isinstance(attention_payload, Mapping):
             attention_curve = AttentionCurve.from_dict(
                 {
-                    key: float(value)
+                    key: _coerce_float(value, 0.0)
                     for key, value in attention_payload.items()
                     if isinstance(key, str)
                 }
@@ -223,30 +244,45 @@ class Site:
             risk_curve = risk_payload
         elif isinstance(risk_payload, Mapping):
             risk_curve = RiskCurve.from_dict(
-                {key: float(value) for key, value in risk_payload.items() if isinstance(key, str)}
+                {
+                    key: _coerce_float(value, 0.0)
+                    for key, value in risk_payload.items()
+                    if isinstance(key, str)
+                }
             )
         else:
             risk_curve = RiskCurve()
         identifier = payload.get("identifier")
         if identifier is None:
             raise ValueError("Serialized site payload missing 'identifier'")
+        site_type_value = payload.get("site_type", SiteType.CAMP)
+        if isinstance(site_type_value, SiteType):
+            site_type_arg = site_type_value
+        elif site_type_value is None:
+            site_type_arg = SiteType.CAMP
+        else:
+            try:
+                site_type_arg = SiteType(str(site_type_value))
+            except ValueError:
+                site_type_arg = SiteType.CAMP
+        controlling = payload.get("controlling_faction")
+        settlement = payload.get("settlement_id")
+        connections_payload = payload.get("connections")
+        connections: dict[str, float] = {}
+        if isinstance(connections_payload, Mapping):
+            for key, value in connections_payload.items():
+                connections[str(key)] = _coerce_float(value, 0.0)
         return Site(
             identifier=str(identifier),
-            site_type=payload.get("site_type", SiteType.CAMP),
-            exploration_percent=float(payload.get("exploration_percent", 0.0)),
-            scavenged_percent=float(payload.get("scavenged_percent", 0.0)),
-            population=int(payload.get("population", 0)),
-            controlling_faction=(
-                None
-                if payload.get("controlling_faction") is None
-                else str(payload.get("controlling_faction"))
-            ),
+            site_type=site_type_arg,
+            exploration_percent=_coerce_float(payload.get("exploration_percent"), 0.0),
+            scavenged_percent=_coerce_float(payload.get("scavenged_percent"), 0.0),
+            population=_coerce_int(payload.get("population"), 0),
+            controlling_faction=(None if controlling is None else str(controlling)),
             attention_curve=attention_curve,
             risk_curve=risk_curve,
-            settlement_id=(
-                None if payload.get("settlement_id") is None else str(payload.get("settlement_id"))
-            ),
-            connections=payload.get("connections", {}),
+            settlement_id=(None if settlement is None else str(settlement)),
+            connections=connections,
         )
 
     def risk_at(self, t: float | None = None) -> float:
@@ -337,3 +373,5 @@ class Site:
         else:
             self.population = max(0, int(self.population * 0.95))
         return sway
+
+

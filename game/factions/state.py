@@ -21,8 +21,10 @@ _CARAVAN_SCHEMA = {
 _CARAVAN_CARGO_SCHEMA = {"caravan": pl.String, "good": pl.String, "amount": pl.Int64}
 
 
-def _to_list(value: Sequence[str] | None) -> list[str]:
-    return [str(item) for item in value or []]
+def _to_list(value: object) -> list[str]:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [str(item) for item in value]
+    return []
 
 
 def _is_nan(value: float) -> bool:
@@ -48,28 +50,61 @@ class FactionLedger:
     def from_payload(cls, factions: Iterable[Mapping[str, object]] | None) -> FactionLedger:
         ledger = cls()
         for payload in factions or []:
-            name = str(payload.get("name"))
+            if not isinstance(payload, Mapping):
+                raise TypeError("Faction payload must be a mapping")
+            raw_name = payload.get("name")
+            name = str(raw_name) if raw_name is not None else ""
             ledger.ensure_faction(name)
-            for site in payload.get("known_sites", []):
-                ledger.add_known_site(name, str(site))
-            for resource, amount in dict(payload.get("resources", {})).items():
-                ledger.adjust_resource(name, str(resource), float(amount))
-            for key, weight in dict(payload.get("resource_preferences", {})).items():
-                ledger.set_resource_preference(name, str(key), float(weight))
-            caravans = payload.get("caravans", {})
+            known_sites = payload.get("known_sites")
+            if isinstance(known_sites, Sequence) and not isinstance(known_sites, (str, bytes)):
+                for site in known_sites:
+                    ledger.add_known_site(name, str(site))
+            resources = payload.get("resources")
+            if isinstance(resources, Mapping):
+                for resource, amount in resources.items():
+                    if isinstance(amount, (int, float, str)):
+                        try:
+                            ledger.adjust_resource(name, str(resource), float(amount))
+                        except ValueError:
+                            continue
+            preferences = payload.get("resource_preferences")
+            if isinstance(preferences, Mapping):
+                for key, weight in preferences.items():
+                    if isinstance(weight, (int, float, str)):
+                        try:
+                            ledger.set_resource_preference(name, str(key), float(weight))
+                        except ValueError:
+                            continue
+            caravans = payload.get("caravans")
             if isinstance(caravans, Mapping):
                 for data in caravans.values():
-                    identifier = str(data.get("identifier"))
-                    location = str(data.get("location"))
+                    if not isinstance(data, Mapping):
+                        continue
+                    raw_identifier = data.get("identifier")
+                    identifier = str(raw_identifier) if raw_identifier is not None else ""
+                    if not identifier:
+                        continue
+                    raw_location = data.get("location")
+                    location = str(raw_location) if raw_location is not None else ""
                     ledger.register_caravan(name, identifier, location)
                     ledger.update_caravan_route(identifier, _to_list(data.get("route")))
+                    days_raw = data.get("days_until_move")
+                    days_until_move = int(days_raw) if isinstance(days_raw, (int, str)) else 0
                     ledger.update_caravan(
                         identifier,
-                        days_until_move=int(data.get("days_until_move", 0)),
+                        days_until_move=days_until_move,
                         location=location,
                     )
-                    for good, amount in dict(data.get("cargo", {})).items():
-                        ledger.add_caravan_cargo(identifier, str(good), int(amount))
+                    cargo_payload = data.get("cargo")
+                    if isinstance(cargo_payload, Mapping):
+                        for good, amount in cargo_payload.items():
+                            if isinstance(amount, (int, float, str)):
+                                try:
+                                    ledger.add_caravan_cargo(
+                                        identifier, str(good), int(float(amount))
+                                    )
+                                except ValueError:
+                                    continue
         return ledger
 
     # ------------------------------------------------------------------
@@ -373,12 +408,19 @@ class CaravanRecord:
 
     @property
     def days_until_move(self) -> int:
-        return int(self.ledger.caravan_row(self.identifier)["days_until_move"])
+        row = self.ledger.caravan_row(self.identifier)
+        value = row.get("days_until_move")
+        if isinstance(value, (int, str)):
+            try:
+                return int(value)
+            except ValueError:  # pragma: no cover - defensive
+                return 0
+        return 0
 
     @property
     def route(self) -> list[str]:
         row = self.ledger.caravan_row(self.identifier)
-        return list(row["route"] or [])
+        return _to_list(row.get("route"))
 
     # ------------------------------------------------------------------
     def plan_route(self, stops: Sequence[str]) -> None:
@@ -386,12 +428,19 @@ class CaravanRecord:
 
     def advance_day(self) -> str | None:
         row = self.ledger.caravan_row(self.identifier)
-        days = int(row["days_until_move"])
+        days_raw = row.get("days_until_move")
+        if isinstance(days_raw, (int, str)):
+            try:
+                days = int(days_raw)
+            except ValueError:  # pragma: no cover - defensive
+                days = 0
+        else:
+            days = 0
         if days > 0:
             self.ledger.update_caravan(self.identifier, days_until_move=days - 1)
             return None
-        route = list(row["route"] or [])
-        location = str(row["location"])
+        route = _to_list(row.get("route"))
+        location = str(row.get("location", ""))
         if route and route[0] == location:
             route.pop(0)
         if not route:
