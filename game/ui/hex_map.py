@@ -6,6 +6,7 @@ from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
+from textual.app import RenderResult
 from textual.binding import Binding
 from textual.message import Message
 from textual.message_pump import MessagePump
@@ -192,7 +193,7 @@ class HexMapView(Widget):
         terrain = grid[row][col]
         self.post_message(self.CoordinateSelected(self, MapSelection((row, col), terrain)))
 
-    def render(self):  # type: ignore[override]
+    def render(self) -> RenderResult:
         highlight_map: dict[Coordinate, str] = dict(self._highlights)
         grid = self.grid_data
         if grid:

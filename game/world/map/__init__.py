@@ -8,8 +8,6 @@ from enum import Enum
 from typing import (
     TYPE_CHECKING,
     ClassVar,
-    Dict,
-    Tuple,
 )
 
 from opensimplex import OpenSimplex
@@ -79,7 +77,8 @@ class ChunkCoord:
     r: int
 
     def neighbors(self) -> Iterator[ChunkCoord]:
-        for dq, dr in HexCoord.DIRECTIONS:  # type: ignore[attr-defined]
+        directions = HexCoord.DIRECTIONS
+        for dq, dr in directions:
             yield ChunkCoord(self.q + dq, self.r + dr)
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+from textual.app import RenderResult
 from textual.binding import Binding
 from textual.message import Message
 from textual.widget import Widget
@@ -144,7 +145,7 @@ class ControlPanelWidget(Widget):
         self.control_panel = panel or ControlPanel()
         self.title = title
 
-    def render(self):  # type: ignore[override]
+    def render(self) -> RenderResult:
         return self.control_panel.render(title=self.title)
 
     def action_reset_plan(self) -> None:
