@@ -76,4 +76,6 @@ class SeasonTracker:
         """Number of days remaining before the season changes."""
 
         offset = self._current_day % self._days_per_season
-        return self._days_per_season - offset if offset != 0 else 0
+        return (
+            self._days_per_season - offset if offset != 0 else self._days_per_season
+        )
