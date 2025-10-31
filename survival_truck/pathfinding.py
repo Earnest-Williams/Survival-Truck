@@ -18,8 +18,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 import heapq
+import logging
 
 # --- Types --------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
+
 
 Hex = Tuple[int, int]  # axial (q, r)
 
@@ -181,6 +185,15 @@ class Pathfinder:
 
     # --------- External adapter ----------------------------------------------
 
+    def _disable_external_adapter(self) -> None:
+        """Disable the external A* adapter after repeated failures."""
+        if self._use_external or self._external_find_path is not None:
+            logger.debug(
+                "Disabling external A* adapter after repeated TypeError; using internal solver."
+            )
+            self._use_external = False
+            self._external_find_path = None
+
     def _run_external_astar(self, start: Hex, goal: Hex) -> Optional[List[Hex]]:
         """
         Adapter for `hexagonal_pathfinding_astar.find_path`.
@@ -194,6 +207,7 @@ class Pathfinder:
         The code below tries the most flexible style first.
         """
         # Strategy 1: keyword callables
+        signature_failures = 0
         try:
             path = self._external_find_path(  # type: ignore
                 start,
@@ -204,7 +218,7 @@ class Pathfinder:
             )
             return list(path) if path else None
         except TypeError:
-            pass
+            signature_failures += 1
 
         # Strategy 2: positional callables
         try:
@@ -217,7 +231,10 @@ class Pathfinder:
             )
             return list(path) if path else None
         except TypeError:
-            pass
+            signature_failures += 1
+
+        if signature_failures == 2:
+            self._disable_external_adapter()
 
         # Strategy 3: fall back to internal
         return self._run_internal_astar(start, goal)
