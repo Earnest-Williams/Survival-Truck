@@ -2,27 +2,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import sqrt
 
-# Orientation matrices from Red Blob (do not alter)
 @dataclass(frozen=True)
 class Orientation:
-    f0: float; f1: float; f2: float; f3: float  # axial(q,r) -> pixel
-    b0: float; b1: float; b2: float; b3: float  # pixel -> axial
-    start_angle: float                           # for polygon corners
+    f0: float; f1: float; f2: float; f3: float
+    b0: float; b1: float; b2: float; b3: float
+    start_angle: float  # turns (0..1)
 
-# Pointy-top and Flat-top
-layout_pointy = Orientation(
-    f0 =  sqrt(3.0), f1 =  sqrt(3.0)/2.0,
-    f2 =  0.0,       f3 =  3.0/2.0,
-    b0 =  sqrt(3.0)/3.0, b1 = -1.0/3.0,
-    b2 =  0.0,            b3 =  2.0/3.0,
-    start_angle = 0.5,  # 30° in turns
-)
-layout_flat = Orientation(
-    f0 =  3.0/2.0,  f1 = 0.0,
-    f2 =  sqrt(3.0)/2.0, f3 = sqrt(3.0),
-    b0 =  2.0/3.0,  b1 = 0.0,
-    b2 = -1.0/3.0,  b3 = sqrt(3.0)/3.0,
-    start_angle = 0.0,  # 0° in turns
+
+POINTY = Orientation(
+    f0=sqrt(3.0),
+    f1=sqrt(3.0) / 2.0,
+    f2=0.0,
+    f3=1.5,
+    b0=sqrt(3.0) / 3.0,
+    b1=-1.0 / 3.0,
+    b2=0.0,
+    b3=2.0 / 3.0,
+    start_angle=0.5,
 )
 
 @dataclass
