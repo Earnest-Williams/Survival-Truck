@@ -116,27 +116,25 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from .hex_layout import Layout, POINTY, cube_round
-
-# Tune this between ~0.82 and 0.95 until it looks right on your terminal.
-VISUAL_FLATTEN = 0.88
+from .config_store import CONFIG_PATH, HexLayoutConfig
+from .hex_layout import FLAT, Layout, POINTY, cube_round
 
 
 Point = Tuple[float, float]
 Poly = List[Point]
 
 
-def hex_points_pointy_top(cx: float, cy: float, r: float, flatten: float) -> Poly:
-    """Return the six vertices of a pointy-top hex centred at (cx, cy)."""
+def hex_polygon(layout: Layout, cx: float, cy: float) -> Poly:
+    """Return the six vertices of a hex centred at ``(cx, cy)``."""
 
-    angles = (0, 60, 120, 180, 240, 300)
+    orientation = layout.orientation
     points: Poly = []
-    for angle in angles:
-        radians = math.radians(angle)
+    for index in range(6):
+        angle = math.tau * (orientation.start_angle + index) / 6.0
         points.append(
             (
-                cx + r * math.sin(radians),
-                cy - (r * math.cos(radians)) * flatten,
+                cx + layout.size_x * math.cos(angle),
+                cy - layout.size_y * math.sin(angle),
             )
         )
     return points
@@ -161,7 +159,20 @@ def point_in_convex_poly(x: float, y: float, poly: Poly) -> bool:
 
 
 class HexCanvas(Widget):
-    """Pointy-top hex grid drawn on a Rich canvas with hover and click."""
+    """Hex grid drawn on a Rich canvas with hover and click support."""
+
+    DEFAULT_BINDINGS = [
+        ("shift+up", "flatten_increase", "Flatten +"),
+        ("shift+down", "flatten_decrease", "Flatten -"),
+        ("shift+right", "height_increase", "H +"),
+        ("shift+left", "height_decrease", "H -"),
+        ("ctrl+shift+left", "origin_left", "OX -"),
+        ("ctrl+shift+right", "origin_right", "OX +"),
+        ("ctrl+shift+up", "origin_up", "OY -"),
+        ("ctrl+shift+down", "origin_down", "OY +"),
+        ("ctrl+s", "save_layout", "Save layout"),
+        ("ctrl+r", "reload_layout", "Reload layout"),
+    ]
 
     DEFAULT_CSS = """
     HexCanvas {
@@ -169,10 +180,8 @@ class HexCanvas(Widget):
     }
     """
 
-    radius: int = reactive(10)
     cols: int = reactive(8)
     rows: int = reactive(6)
-    visual_flatten: float = reactive(VISUAL_FLATTEN)
 
     fill_forest = "#1b2735"
     fill_scrub = "#17212c"
@@ -198,24 +207,24 @@ class HexCanvas(Widget):
         radius: int = 10,
         tiles: Dict[Tuple[int, int], str] | None = None,
         labels: Dict[Tuple[int, int], str] | None = None,
-        visual_flatten: float | None = None,
     ) -> None:
         super().__init__()
         self._centres: Dict[Tuple[int, int], Point] = {}
-        # ``Widget`` already exposes a ``_layout`` property, so store the
-        # hex-specific layout data under a unique attribute name to avoid
-        # clashing with Textual internals.
-        self._hex_layout: Layout | None = None
+        self._layout: Layout | None = None
+        self.cfg: HexLayoutConfig | None = None
+        self._initial_hex_height = float(radius) * 2.0
         self.cols = cols
         self.rows = rows
-        self.radius = radius
         self.tiles = dict(tiles or {})
         self.labels = dict(labels or {})
         self.highlights = {}
-        if visual_flatten is not None:
-            self.visual_flatten = visual_flatten
 
     def on_mount(self) -> None:
+        config_exists = CONFIG_PATH.exists()
+        self.cfg = HexLayoutConfig.load()
+        if not config_exists:
+            self.cfg.hex_height = self._initial_hex_height
+        self._rebuild_layout()
         self._rebuild_centres()
 
     def watch_cols(self, _value: int) -> None:
@@ -226,44 +235,66 @@ class HexCanvas(Widget):
         self._rebuild_centres()
         self.refresh()
 
-    def watch_radius(self, _value: int) -> None:
-        self._rebuild_centres()
-        self.refresh()
-
-    def watch_visual_flatten(self, _value: float) -> None:
-        self._rebuild_centres()
-        self.refresh()
-
     # ------------------------------------------------------------------
     def _rebuild_centres(self) -> None:
-        self._hex_layout = self._make_layout()
+        if self._layout is None:
+            self._rebuild_layout()
         self._centres.clear()
         for q in range(self.cols):
             for r in range(self.rows):
                 self._centres[(q, r)] = self._centre_for(q, r)
 
     def _centre_for(self, q: int, r: int) -> tuple[float, float]:
-        if self._hex_layout is None:
-            self._hex_layout = self._make_layout()
+        config = self._ensure_config()
+        if self._layout is None:
+            self._rebuild_layout()
 
-        axial_q = q - ((r - (r & 1)) // 2)
-        x, y = self._hex_layout.hex_to_pixel(axial_q, r)
-        return x, y
+        layout = self._layout
+        offset_mode = config.offset_mode
+        if config.orientation == "pointy":
+            parity = (r & 1) if offset_mode in ("odd-r", "even-r") else 0
+            if offset_mode == "even-r":
+                parity ^= 1
+            return layout.hex_to_pixel(q + 0.5 * parity, r)
+        parity = (q & 1) if offset_mode in ("odd-q", "even-q") else 0
+        if offset_mode == "even-q":
+            parity ^= 1
+        return layout.hex_to_pixel(q, r + 0.5 * parity)
 
-    def _make_layout(self) -> Layout:
-        radius = float(self.radius)
-        flatten = float(self.visual_flatten)
-        size_x = radius
-        size_y = radius * flatten
-        origin_x = radius + 1.0
-        origin_y = radius * flatten + 1.0
-        return Layout(POINTY, size_x, size_y, origin_x, origin_y)
+    def _rebuild_layout(self) -> None:
+        if self.cfg is None:
+            self.cfg = HexLayoutConfig.load()
+
+        height = float(self.cfg.hex_height)
+        flatten = float(self.cfg.flatten)
+        origin_x = float(self.cfg.origin_x)
+        origin_y = float(self.cfg.origin_y)
+
+        if self.cfg.orientation == "pointy":
+            size_x = height / math.sqrt(3.0)
+            size_y = (height / 2.0) * flatten
+            orientation = POINTY
+        else:
+            size_x = height / 2.0
+            size_y = (height / math.sqrt(3.0)) * flatten
+            orientation = FLAT
+
+        self._layout = Layout(
+            orientation=orientation,
+            size_x=size_x,
+            size_y=size_y,
+            origin_x=origin_x,
+            origin_y=origin_y,
+        )
 
     # ------------------------------------------------------------------
     def render(self) -> RichCanvas:
         width, height = self.size
         canvas = RichCanvas(width, height)
-        radius = float(self.radius)
+        if self._layout is None:
+            self._rebuild_layout()
+        layout = self._layout
+        assert layout is not None
 
         for (q, r), (cx, cy) in self._centres.items():
             tile_code = self.tiles.get((q, r), "Sc")
@@ -285,7 +316,7 @@ class HexCanvas(Widget):
             )
             edge_colour = self.edge_hover if (is_hovered or highlight_label is not None) else self.edge
 
-            points = hex_points_pointy_top(cx, cy, radius, self.visual_flatten)
+            points = hex_polygon(layout, cx, cy)
 
             min_x = int(max(0, math.floor(min(point[0] for point in points))))
             max_x = int(min(width - 1, math.ceil(max(point[0] for point in points))))
@@ -328,23 +359,106 @@ class HexCanvas(Widget):
         self.refresh()
 
     # ------------------------------------------------------------------
-    def _hit_test(self, px: float, py: float) -> tuple[int, int]:
-        """Return the odd-r offset coordinates for a pixel position."""
+    def _ensure_config(self) -> HexLayoutConfig:
+        if self.cfg is None:
+            self.cfg = HexLayoutConfig.load()
+        return self.cfg
 
-        if self._hex_layout is None:
-            self._hex_layout = self._make_layout()
+    def action_flatten_increase(self) -> None:
+        cfg = self._ensure_config()
+        cfg.flatten = min(1.20, round(cfg.flatten + 0.01, 3))
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
 
-        qf, rf, sf = self._hex_layout.pixel_to_hex_fractional(px, py)
+    def action_flatten_decrease(self) -> None:
+        cfg = self._ensure_config()
+        cfg.flatten = max(0.70, round(cfg.flatten - 0.01, 3))
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
 
-        # ``rf`` corresponds to the axial ``r`` value.  Use it to derive the row
-        # parity so we can undo the 0.5 column shift applied for odd rows when
-        # converting to pixel space.
-        _, ri, _ = cube_round(qf, rf, sf)
-        parity = ri & 1
+    def action_height_increase(self) -> None:
+        cfg = self._ensure_config()
+        cfg.hex_height = min(256.0, cfg.hex_height + 1.0)
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
 
-        corrected_qf = qf - 0.5 * parity
-        qi, ri, _ = cube_round(corrected_qf, rf, -corrected_qf - rf)
+    def action_height_decrease(self) -> None:
+        cfg = self._ensure_config()
+        cfg.hex_height = max(8.0, cfg.hex_height - 1.0)
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
+
+    def action_origin_left(self) -> None:
+        cfg = self._ensure_config()
+        cfg.origin_x -= 4.0
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
+
+    def action_origin_right(self) -> None:
+        cfg = self._ensure_config()
+        cfg.origin_x += 4.0
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
+
+    def action_origin_up(self) -> None:
+        cfg = self._ensure_config()
+        cfg.origin_y -= 4.0
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
+
+    def action_origin_down(self) -> None:
+        cfg = self._ensure_config()
+        cfg.origin_y += 4.0
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
+
+    def action_save_layout(self) -> None:
+        cfg = self._ensure_config()
+        cfg.save()
+
+    def action_reload_layout(self) -> None:
+        self.cfg = HexLayoutConfig.load()
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
+
+    # ------------------------------------------------------------------
+    def hex_at_pixel(self, px: float, py: float) -> tuple[int, int]:
+        config = self._ensure_config()
+        if self._layout is None:
+            self._rebuild_layout()
+
+        qf, rf, _ = self._layout.pixel_to_hex_fractional(px, py)
+
+        if config.orientation == "pointy":
+            ri = round(rf)
+            parity = (ri & 1) if config.offset_mode in ("odd-r", "even-r") else 0
+            if config.offset_mode == "even-r":
+                parity ^= 1
+            qf -= 0.5 * parity
+            qi, ri, _ = cube_round(qf, rf, -qf - rf)
+            return qi, ri
+
+        qi = round(qf)
+        parity = (qi & 1) if config.offset_mode in ("odd-q", "even-q") else 0
+        if config.offset_mode == "even-q":
+            parity ^= 1
+        rf -= 0.5 * parity
+        qi, ri, _ = cube_round(qf, rf, -qf - rf)
         return qi, ri
+
+    def _hit_test(self, px: float, py: float) -> tuple[int, int]:
+        """Return the offset coordinates for a pixel position."""
+
+        return self.hex_at_pixel(px, py)
 
     def _hit(self, x: int, y: int) -> tuple[int, int] | None:
         px, py = float(x) + 0.5, float(y) + 0.5

@@ -20,6 +20,17 @@ POINTY = Orientation(
     b3=2.0 / 3.0,
     start_angle=0.5,
 )
+FLAT = Orientation(
+    f0=1.5,
+    f1=0.0,
+    f2=sqrt(3.0) / 2.0,
+    f3=sqrt(3.0),
+    b0=2.0 / 3.0,
+    b1=0.0,
+    b2=-1.0 / 3.0,
+    b3=sqrt(3.0) / 3.0,
+    start_angle=0.0,
+)
 
 @dataclass
 class Layout:
