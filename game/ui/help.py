@@ -63,7 +63,7 @@ class HelpScreen(ModalScreen[None]):
         margin-bottom: 1;
     }
 
-    .help-section-title:first-child {
+    .help-section-title--first {
         margin-top: 0;
     }
 
@@ -95,8 +95,11 @@ class HelpScreen(ModalScreen[None]):
         with Container(id="help-dialog"):
             yield Static("Help", id="help-title")
             with VerticalScroll(id="help-commands"):
-                for section in self.sections:
-                    yield Static(section.title, classes="help-section-title")
+                for index, section in enumerate(self.sections):
+                    classes = "help-section-title"
+                    if index == 0:
+                        classes += " help-section-title--first"
+                    yield Static(section.title, classes=classes)
                     table = Table.grid(padding=(0, 2), expand=True)
                     table.add_column("Key", justify="right", style="bold")
                     table.add_column("Description", justify="left")
