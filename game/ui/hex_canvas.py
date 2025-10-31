@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from math import sqrt
 from typing import Dict, List, Tuple
 
 from typing import TYPE_CHECKING
@@ -117,23 +116,29 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from .hex_layout import Layout, cube_round, layout_pointy
+from .hex_layout import Layout, POINTY, cube_round
 
-DEFAULT_ASPECT_Y = 0.55
+# Tune this between ~0.82 and 0.95 until it looks right on your terminal.
+VISUAL_FLATTEN = 0.88
 
 
 Point = Tuple[float, float]
 Poly = List[Point]
 
 
-def hex_points_pointy_top(cx: float, cy: float, r: float, ay: float) -> Poly:
+def hex_points_pointy_top(cx: float, cy: float, r: float, flatten: float) -> Poly:
     """Return the six vertices of a pointy-top hex centred at (cx, cy)."""
 
     angles = (0, 60, 120, 180, 240, 300)
     points: Poly = []
     for angle in angles:
         radians = math.radians(angle)
-        points.append((cx + r * math.sin(radians), cy - (r * math.cos(radians)) * ay))
+        points.append(
+            (
+                cx + r * math.sin(radians),
+                cy - (r * math.cos(radians)) * flatten,
+            )
+        )
     return points
 
 
@@ -167,7 +172,7 @@ class HexCanvas(Widget):
     radius: int = reactive(10)
     cols: int = reactive(8)
     rows: int = reactive(6)
-    aspect_y: float = reactive(DEFAULT_ASPECT_Y)
+    visual_flatten: float = reactive(VISUAL_FLATTEN)
 
     fill_forest = "#1b2735"
     fill_scrub = "#17212c"
@@ -193,7 +198,7 @@ class HexCanvas(Widget):
         radius: int = 10,
         tiles: Dict[Tuple[int, int], str] | None = None,
         labels: Dict[Tuple[int, int], str] | None = None,
-        aspect_y: float | None = None,
+        visual_flatten: float | None = None,
     ) -> None:
         super().__init__()
         self._centres: Dict[Tuple[int, int], Point] = {}
@@ -207,8 +212,8 @@ class HexCanvas(Widget):
         self.tiles = dict(tiles or {})
         self.labels = dict(labels or {})
         self.highlights = {}
-        if aspect_y is not None:
-            self.aspect_y = aspect_y
+        if visual_flatten is not None:
+            self.visual_flatten = visual_flatten
 
     def on_mount(self) -> None:
         self._rebuild_centres()
@@ -225,39 +230,34 @@ class HexCanvas(Widget):
         self._rebuild_centres()
         self.refresh()
 
-    def watch_aspect_y(self, _value: float) -> None:
+    def watch_visual_flatten(self, _value: float) -> None:
         self._rebuild_centres()
         self.refresh()
 
     # ------------------------------------------------------------------
     def _rebuild_centres(self) -> None:
-        self._hex_layout = self._build_layout()
+        self._hex_layout = self._make_layout()
         self._centres.clear()
         for q in range(self.cols):
             for r in range(self.rows):
                 self._centres[(q, r)] = self._centre_for(q, r)
 
     def _centre_for(self, q: int, r: int) -> tuple[float, float]:
-        size = float(self.radius)
-        # POINTY-TOP, ODD-R offset (row parity shifts X)
-        x0 = size + 1.0
-        y0 = (size * self.aspect_y) + 1.0
-        x_pos = (math.sqrt(3) * size) * (q + 0.5 * (r & 1)) + x0
-        y_pos = (1.5 * size * self.aspect_y) * r + y0
-        return (x_pos, y_pos)
+        if self._hex_layout is None:
+            self._hex_layout = self._make_layout()
 
-    def _build_layout(self) -> Layout:
+        axial_q = q - ((r - (r & 1)) // 2)
+        x, y = self._hex_layout.hex_to_pixel(axial_q, r)
+        return x, y
+
+    def _make_layout(self) -> Layout:
         radius = float(self.radius)
-        aspect = float(self.aspect_y)
-        width = sqrt(3.0) * radius
-        height = 2.0 * radius * aspect
-        return Layout(
-            layout_pointy,
-            size_x=radius,
-            size_y=radius * aspect,
-            origin_x=width / 2.0,
-            origin_y=height / 2.0,
-        )
+        flatten = float(self.visual_flatten)
+        size_x = radius
+        size_y = radius * flatten
+        origin_x = radius + 1.0
+        origin_y = radius * flatten + 1.0
+        return Layout(POINTY, size_x, size_y, origin_x, origin_y)
 
     # ------------------------------------------------------------------
     def render(self) -> RichCanvas:
@@ -285,7 +285,7 @@ class HexCanvas(Widget):
             )
             edge_colour = self.edge_hover if (is_hovered or highlight_label is not None) else self.edge
 
-            points = hex_points_pointy_top(cx, cy, radius, self.aspect_y)
+            points = hex_points_pointy_top(cx, cy, radius, self.visual_flatten)
 
             min_x = int(max(0, math.floor(min(point[0] for point in points))))
             max_x = int(min(width - 1, math.ceil(max(point[0] for point in points))))
@@ -330,11 +330,13 @@ class HexCanvas(Widget):
     # ------------------------------------------------------------------
     def _hit(self, x: int, y: int) -> tuple[int, int] | None:
         if self._hex_layout is None:
-            self._hex_layout = self._build_layout()
+            self._hex_layout = self._make_layout()
 
         px, py = float(x) + 0.5, float(y) + 0.5
         qf, rf, sf = self._hex_layout.pixel_to_hex_fractional(px, py)
-        q, r, _ = cube_round(qf, rf, sf)
+        axial_q, axial_r, _ = cube_round(qf, rf, sf)
+        q = axial_q + ((axial_r - (axial_r & 1)) // 2)
+        r = axial_r
         key = (q, r)
         return key if key in self._centres else None
 
