@@ -25,6 +25,13 @@ def _placeholder_panel(title: str, message: str, *, border_style: str = "blue") 
     return Panel(message, title=title, border_style=border_style)
 
 
+def _build_layout_panel(config: Mapping[str, str]) -> RenderableType:
+    table = Table.grid(padding=(0, 1), expand=True)
+    for key, value in config.items():
+        table.add_row(f"[bold]{key}[/bold]", str(value))
+    return Panel(table, title="Hex Layout", border_style="cyan")
+
+
 class DashboardView(Widget):
     """Display expedition status information alongside notifications."""
 
@@ -44,6 +51,7 @@ class DashboardView(Widget):
         self._focus_detail: str | None = None
         self.notification_channel = notification_channel or NotificationChannel()
         self._stats: dict[str, str] = {str(key): str(value) for key, value in (stats or {}).items()}
+        self._layout_config: dict[str, str] | None = None
 
     def update_stats(self, stats: Mapping[str, str]) -> None:
         self._stats = {str(key): str(value) for key, value in stats.items()}
@@ -59,6 +67,10 @@ class DashboardView(Widget):
             del self._stats["Focus"]
         self.refresh()
 
+    def update_layout_config(self, config: Mapping[str, str]) -> None:
+        self._layout_config = {str(key): str(value) for key, value in config.items()}
+        self.refresh()
+
     def action_clear_notifications(self) -> None:
         self.notification_channel.clear()
         self.refresh()
@@ -72,10 +84,13 @@ class DashboardView(Widget):
             else _placeholder_panel("Campaign Stats", "No statistics available")
         )
         notifications = self.notification_channel.render_panel(title="Notifications")
-        layout.split_column(
-            Layout(stats_panel, name="stats", ratio=2),
-            Layout(notifications, name="notifications", ratio=1),
-        )
+        layout_sections = [Layout(stats_panel, name="stats", ratio=2)]
+        if self._layout_config:
+            layout_sections.append(
+                Layout(_build_layout_panel(self._layout_config), name="layout", ratio=1)
+            )
+        layout_sections.append(Layout(notifications, name="notifications", ratio=1))
+        layout.split_column(*layout_sections)
         return layout
 
 
