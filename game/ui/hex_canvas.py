@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from typing import TYPE_CHECKING
 
@@ -116,18 +116,21 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
+DEFAULT_ASPECT_Y = 0.55
+
+
 Point = Tuple[float, float]
 Poly = List[Point]
 
 
-def hex_points_pointy_top(cx: float, cy: float, r: float) -> Poly:
+def hex_points_pointy_top(cx: float, cy: float, r: float, ay: float) -> Poly:
     """Return the six vertices of a pointy-top hex centred at (cx, cy)."""
 
     angles = (0, 60, 120, 180, 240, 300)
     points: Poly = []
     for angle in angles:
         radians = math.radians(angle)
-        points.append((cx + r * math.sin(radians), cy - r * math.cos(radians)))
+        points.append((cx + r * math.sin(radians), cy - (r * math.cos(radians)) * ay))
     return points
 
 
@@ -161,6 +164,7 @@ class HexCanvas(Widget):
     radius: int = reactive(10)
     cols: int = reactive(8)
     rows: int = reactive(6)
+    aspect_y: float = reactive(DEFAULT_ASPECT_Y)
 
     fill_forest = "#1b2735"
     fill_scrub = "#17212c"
@@ -186,6 +190,7 @@ class HexCanvas(Widget):
         radius: int = 10,
         tiles: Dict[Tuple[int, int], str] | None = None,
         labels: Dict[Tuple[int, int], str] | None = None,
+        aspect_y: Optional[float] = None,
     ) -> None:
         super().__init__()
         self._centres: Dict[Tuple[int, int], Point] = {}
@@ -195,6 +200,8 @@ class HexCanvas(Widget):
         self.tiles = dict(tiles or {})
         self.labels = dict(labels or {})
         self.highlights = {}
+        if aspect_y is not None:
+            self.aspect_y = aspect_y
 
     def on_mount(self) -> None:
         self._rebuild_centres()
@@ -211,6 +218,10 @@ class HexCanvas(Widget):
         self._rebuild_centres()
         self.refresh()
 
+    def watch_aspect_y(self, _value: float) -> None:
+        self._rebuild_centres()
+        self.refresh()
+
     # ------------------------------------------------------------------
     def _rebuild_centres(self) -> None:
         self._centres.clear()
@@ -221,7 +232,7 @@ class HexCanvas(Widget):
     def _centre_for(self, q: int, r: int) -> Point:
         size = float(self.radius)
         x_pos = q * (size * 1.5) + size + 1.0
-        y_pos = (r + 0.5 * (q & 1)) * (size * math.sqrt(3)) + size + 1.0
+        y_pos = (r + 0.5 * (q & 1)) * (size * math.sqrt(3) * self.aspect_y) + (size * self.aspect_y) + 1.0
         return (x_pos, y_pos)
 
     # ------------------------------------------------------------------
@@ -250,7 +261,7 @@ class HexCanvas(Widget):
             )
             edge_colour = self.edge_hover if (is_hovered or highlight_label is not None) else self.edge
 
-            points = hex_points_pointy_top(cx, cy, radius)
+            points = hex_points_pointy_top(cx, cy, radius, self.aspect_y)
 
             min_x = int(max(0, math.floor(min(point[0] for point in points))))
             max_x = int(min(width - 1, math.ceil(max(point[0] for point in points))))
@@ -296,7 +307,7 @@ class HexCanvas(Widget):
     def _hit(self, x: int, y: int) -> tuple[int, int] | None:
         px, py = float(x), float(y)
         for key, (cx, cy) in self._centres.items():
-            points = hex_points_pointy_top(cx, cy, float(self.radius))
+            points = hex_points_pointy_top(cx, cy, float(self.radius), self.aspect_y)
             if point_in_convex_poly(px + 0.5, py + 0.5, points):
                 return key
         return None
