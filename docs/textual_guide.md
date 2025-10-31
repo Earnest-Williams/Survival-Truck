@@ -61,12 +61,12 @@ Screen {
 }
 2.4 Panel Spacing & Accents
 /* Consistent panel padding */
-HexMapView, #status, #diplomacy, #truck, #controls, TurnLogWidget {
+HexCanvas, #status, #diplomacy, #truck, #controls, TurnLogWidget {
     padding: 1;
 }
 
 /* Map occupies left col rows 1–4 */
-HexMapView {
+HexCanvas {
     row-span: 4;
 }
 
@@ -77,7 +77,7 @@ TurnLogWidget {
 }
 3) Compose Order (Default Dashboard)
 Textual grids place children by compose order. For the 2×5 dashboard:
-HexMapView() — left column, rows 1–4 (row-span: 4)
+HexCanvas() — left column, rows 1–4 (row-span: 4)
 StatusPanel(id="status") — right column, row 1
 DiplomacyView(id="diplomacy") — right column, row 2
 TruckLayoutView(id="truck") — right column, row 3
@@ -116,7 +116,7 @@ These are the only Textual CSS properties permitted in this repository.
 Category
 Properties Allowed
 Selectors
-*, widget classes (e.g., HexMapView), IDs (#status), Header, Footer.
+*, widget classes (e.g., HexCanvas), IDs (#status), Header, Footer.
 Layout & Grid
 layout, grid-size, grid-columns, grid-rows, grid-gutter, row-span, column-span.
 Box Model

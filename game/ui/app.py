@@ -34,7 +34,7 @@ from .channels import NotificationChannel, TurnLogChannel
 from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
 from .diplomacy import DiplomacyView
-from .hex_map import HexMapView
+from .hex_canvas import HexCanvas
 from .help import HelpScreen, HelpSection, build_help_commands
 from .truck_layout import TruckLayoutView
 
@@ -77,7 +77,7 @@ class SurvivalTruckApp(App[Any]):
     }
 
     /* Placement is by compose() order; spans only */
-    HexMapView {
+    HexCanvas {
         row-span: 4;
     }
 
@@ -116,6 +116,30 @@ class SurvivalTruckApp(App[Any]):
         if config is None:
             config = self._create_demo_config()
         self._map_data: list[list[str]] = [list(row) for row in config.map_data]
+        self._terrain_symbols: dict[str, str] = {
+            "plains": "Pl",
+            "forest": "Fo",
+            "tundra": "Tu",
+            "mountain": "Mt",
+            "coast": "Co",
+            "ruin": "Ru",
+            "wasteland": "Wa",
+            "scrub": "Sc",
+            "desert": "De",
+            "swamp": "Sw",
+        }
+        self._terrain_fill_codes: dict[str, str] = {
+            "forest": "Fo",
+            "swamp": "Fo",
+            "plains": "Sc",
+            "scrub": "Sc",
+            "tundra": "Sc",
+            "coast": "Sc",
+            "ruin": "Ba",
+            "wasteland": "Ba",
+            "mountain": "Ba",
+            "desert": "Ba",
+        }
         self.world_state: dict[str, object] = dict(config.world_state)
         self.world_randomness = WorldRandomness(seed=config.world_seed)
         self.world_state.setdefault("randomness", self.world_randomness)
@@ -138,7 +162,16 @@ class SurvivalTruckApp(App[Any]):
             self.world = self.turn_engine.world
             self._bootstrap_world_components()
 
-        self.map_view = HexMapView(grid=self._map_data)
+        rows = len(self._map_data)
+        cols = max((len(row) for row in self._map_data), default=0)
+        initial_tiles, initial_labels = self._build_canvas_payload(self._map_data)
+        self.map_view = HexCanvas(
+            cols=cols,
+            rows=rows,
+            radius=12,
+            tiles=initial_tiles,
+            labels=initial_labels,
+        )
         self.dashboard = DashboardView(notification_channel=self.notification_channel)
         self.diplomacy_view = DiplomacyView()
         self.truck_view = TruckLayoutView()
@@ -219,12 +252,17 @@ class SurvivalTruckApp(App[Any]):
         self._help_visible = False
 
     # ------------------------------------------------------------------
-    def on_hex_map_view_coordinate_selected(self, message: HexMapView.CoordinateSelected) -> None:
-        selection = message.selection
-        waypoint = f"{selection.coordinate[0]},{selection.coordinate[1]}"
+    def on_hex_canvas_hex_clicked(self, message: HexCanvas.HexClicked) -> None:
+        row = int(message.r)
+        col = int(message.q)
+        waypoint = f"{row},{col}"
         self.control_panel.append_waypoint(waypoint)
         self.control_widget.refresh_from_panel()
-        self.dashboard.set_focus_detail(f"{waypoint} ({selection.terrain})")
+        terrain = self._terrain_at(row, col)
+        if terrain is not None:
+            self.dashboard.set_focus_detail(f"{waypoint} ({terrain})")
+        else:
+            self.dashboard.set_focus_detail(waypoint)
         self._update_map_highlights()
 
     def on_control_panel_widget_plan_reset(self, message: ControlPanelWidget.PlanReset) -> None:  # noqa: D401 - Textual hook
@@ -240,7 +278,7 @@ class SurvivalTruckApp(App[Any]):
 
     # ------------------------------------------------------------------
     def _refresh_ui(self, *, context: TurnContext | None = None) -> None:
-        self.map_view.set_map_data(self._map_data)
+        self._refresh_map_view()
         self._update_map_highlights()
 
         truck_component = self.turn_engine.world.get_singleton(TruckComponent)
@@ -271,17 +309,73 @@ class SurvivalTruckApp(App[Any]):
         self.log_widget.refresh_from_channel()
         self.control_widget.refresh_from_panel()
 
+    def _refresh_map_view(self) -> None:
+        rows = len(self._map_data)
+        cols = max((len(row) for row in self._map_data), default=0)
+        tiles, labels = self._build_canvas_payload(self._map_data)
+        self.map_view.cols = cols
+        self.map_view.rows = rows
+        self.map_view.set_tiles(tiles)
+        self.map_view.set_labels(labels)
+
     def _update_map_highlights(self) -> None:
         highlights: dict[tuple[int, int], str] = {}
         for index, waypoint in enumerate(self.control_panel.route_waypoints):
             try:
                 row_str, col_str = waypoint.split(",", 1)
-                coord = (int(row_str), int(col_str))
+                row = int(row_str)
+                col = int(col_str)
             except ValueError:
                 continue
+            if not self._in_bounds(row, col):
+                continue
             label = f"[yellow]{index + 1:02}[/yellow]"
-            highlights[coord] = label
+            highlights[(col, row)] = label
         self.map_view.set_highlights(highlights)
+
+    def _build_canvas_payload(
+        self, grid: Sequence[Sequence[str]]
+    ) -> tuple[dict[tuple[int, int], str], dict[tuple[int, int], str]]:
+        tiles: dict[tuple[int, int], str] = {}
+        labels: dict[tuple[int, int], str] = {}
+        for row_index, row in enumerate(grid):
+            for col_index, terrain in enumerate(row):
+                terrain_text = str(terrain)
+                tiles[(col_index, row_index)] = self._terrain_code_for(terrain_text)
+                labels[(col_index, row_index)] = self._terrain_symbol_for(terrain_text)
+        return tiles, labels
+
+    def _terrain_symbol_for(self, terrain: str) -> str:
+        trimmed = terrain.strip()
+        if not trimmed:
+            return "??"
+        normalised = trimmed.lower()
+        symbol = self._terrain_symbols.get(normalised)
+        if symbol:
+            return symbol
+        if len(trimmed) == 1:
+            return trimmed.upper()
+        return trimmed[:2].title()
+
+    def _terrain_code_for(self, terrain: str) -> str:
+        trimmed = terrain.strip()
+        if not trimmed:
+            return "Sc"
+        normalised = trimmed.lower()
+        return self._terrain_fill_codes.get(normalised, "Sc")
+
+    def _terrain_at(self, row: int, col: int) -> str | None:
+        if not self._in_bounds(row, col):
+            return None
+        return str(self._map_data[row][col])
+
+    def _in_bounds(self, row: int, col: int) -> bool:
+        if row < 0 or col < 0:
+            return False
+        if row >= len(self._map_data):
+            return False
+        row_data = self._map_data[row]
+        return col < len(row_data)
 
     def _build_stats(self, context: TurnContext | None) -> dict[str, str]:
         stats: dict[str, str] = {
