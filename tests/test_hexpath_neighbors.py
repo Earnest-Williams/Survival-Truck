@@ -17,3 +17,53 @@ def test_neighbors_offset_parity_odd_r():
     n_even = {(x.col, x.row) for x in neighbors_offset(o_even)}
     n_odd = {(x.col, x.row) for x in neighbors_offset(o)}
     assert n_even != n_odd
+
+
+def test_neighbors_offset_even_q_canonical():
+    base_even = Offset(4, 2, Layout.EVEN_Q)  # even column
+    base_odd = Offset(5, 2, Layout.EVEN_Q)  # odd column
+
+    even_expected = {
+        (5, 2),
+        (5, 1),
+        (4, 1),
+        (3, 1),
+        (3, 2),
+        (4, 3),
+    }
+    odd_expected = {
+        (6, 3),
+        (6, 2),
+        (5, 1),
+        (4, 2),
+        (4, 3),
+        (5, 3),
+    }
+
+    assert {(n.col, n.row) for n in neighbors_offset(base_even)} == even_expected
+    assert {(n.col, n.row) for n in neighbors_offset(base_odd)} == odd_expected
+
+
+def test_neighbors_offset_odd_q_canonical():
+    base_even = Offset(4, 2, Layout.ODD_Q)  # even column
+    base_odd = Offset(5, 2, Layout.ODD_Q)  # odd column
+
+    even_expected = {
+        (5, 3),
+        (5, 2),
+        (4, 1),
+        (3, 2),
+        (3, 3),
+        (4, 3),
+    }
+    odd_expected = {
+        (6, 2),
+        (6, 1),
+        (5, 1),
+        (4, 1),
+        (4, 2),
+        (5, 3),
+    }
+
+    assert {(n.col, n.row) for n in neighbors_offset(base_even)} == even_expected
+    assert {(n.col, n.row) for n in neighbors_offset(base_odd)} == odd_expected
