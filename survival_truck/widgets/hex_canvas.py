@@ -49,7 +49,7 @@ class HexCanvas(Widget):
         self.cursor: Hex = origin
         self.preview_path: Optional[List[Hex]] = None
         self.viewport = Viewport(center=origin)
-        self.budget_key: int = state.version
+        self.budget_key: Optional[int] = None
         self._update_preview()
 
     # ---------------------------------------------------------------------
@@ -111,8 +111,22 @@ class HexCanvas(Widget):
     # ---------------------------------------------------------------------
     # Preview helpers
 
+    def _resolve_budget_key(self) -> int:
+        """Determine which budget key to use for the next preview lookup."""
+
+        if self.budget_key is not None:
+            return self.budget_key
+        return self.state.version
+
     def _update_preview(self) -> None:
-        self.preview_path = self.pf.path(self.origin, self.cursor, budget_key=self.budget_key)
+        budget_key = self._resolve_budget_key()
+        self.preview_path = self.pf.path(self.origin, self.cursor, budget_key=budget_key)
+
+    def set_budget_key(self, budget_key: Optional[int]) -> None:
+        """Override the budget key used for preview generation."""
+
+        self.budget_key = budget_key
+        self._update_preview()
 
     def _recenter_if_needed(self) -> None:
         cq, cr = self.cursor
