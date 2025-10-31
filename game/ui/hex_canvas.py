@@ -328,15 +328,27 @@ class HexCanvas(Widget):
         self.refresh()
 
     # ------------------------------------------------------------------
-    def _hit(self, x: int, y: int) -> tuple[int, int] | None:
+    def _hit_test(self, px: float, py: float) -> tuple[int, int]:
+        """Return the odd-r offset coordinates for a pixel position."""
+
         if self._hex_layout is None:
             self._hex_layout = self._make_layout()
 
-        px, py = float(x) + 0.5, float(y) + 0.5
         qf, rf, sf = self._hex_layout.pixel_to_hex_fractional(px, py)
-        axial_q, axial_r, _ = cube_round(qf, rf, sf)
-        q = axial_q + ((axial_r - (axial_r & 1)) // 2)
-        r = axial_r
+
+        # ``rf`` corresponds to the axial ``r`` value.  Use it to derive the row
+        # parity so we can undo the 0.5 column shift applied for odd rows when
+        # converting to pixel space.
+        _, ri, _ = cube_round(qf, rf, sf)
+        parity = ri & 1
+
+        corrected_qf = qf - 0.5 * parity
+        qi, ri, _ = cube_round(corrected_qf, rf, -corrected_qf - rf)
+        return qi, ri
+
+    def _hit(self, x: int, y: int) -> tuple[int, int] | None:
+        px, py = float(x) + 0.5, float(y) + 0.5
+        q, r = self._hit_test(px, py)
         key = (q, r)
         return key if key in self._centres else None
 
