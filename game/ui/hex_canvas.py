@@ -234,10 +234,14 @@ class HexCanvas(Widget):
             for r in range(self.rows):
                 self._centres[(q, r)] = self._centre_for(q, r)
 
-    def _centre_for(self, q: int, r: int) -> Point:
-        if self._layout is None:
-            self._layout = self._build_layout()
-        return self._layout.hex_to_pixel(q, r)
+    def _centre_for(self, q: int, r: int) -> tuple[float, float]:
+        size = float(self.radius)
+        # POINTY-TOP, ODD-R offset (row parity shifts X)
+        x0 = size + 1.0
+        y0 = (size * self.aspect_y) + 1.0
+        x_pos = (math.sqrt(3) * size) * (q + 0.5 * (r & 1)) + x0
+        y_pos = (1.5 * size * self.aspect_y) * r + y0
+        return (x_pos, y_pos)
 
     def _build_layout(self) -> Layout:
         radius = float(self.radius)
