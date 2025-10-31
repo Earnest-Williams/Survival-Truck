@@ -81,13 +81,13 @@ class HexCanvas(Widget):
         labels: Dict[Tuple[int, int], str] | None = None,
     ) -> None:
         super().__init__()
+        self._centres: Dict[Tuple[int, int], Point] = {}
         self.cols = cols
         self.rows = rows
         self.radius = radius
         self.tiles = dict(tiles or {})
         self.labels = dict(labels or {})
         self.highlights = {}
-        self._centres: Dict[Tuple[int, int], Point] = {}
 
     def on_mount(self) -> None:
         self._rebuild_centres()
