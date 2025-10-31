@@ -17,7 +17,7 @@ from ..world.graph import allied_factions
 
 @dataclass
 class DiplomacySnapshot:
-    """Light-weight container describing current diplomacy state."""
+    """Lightweight container describing current diplomacy state."""
 
     factions: Mapping[str, FactionRecord]
     graph: nx.Graph | None
