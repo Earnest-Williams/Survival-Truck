@@ -197,7 +197,10 @@ class HexCanvas(Widget):
     ) -> None:
         super().__init__()
         self._centres: Dict[Tuple[int, int], Point] = {}
-        self._layout: Layout | None = None
+        # ``Widget`` already exposes a ``_layout`` property, so store the
+        # hex-specific layout data under a unique attribute name to avoid
+        # clashing with Textual internals.
+        self._hex_layout: Layout | None = None
         self.cols = cols
         self.rows = rows
         self.radius = radius
@@ -228,7 +231,7 @@ class HexCanvas(Widget):
 
     # ------------------------------------------------------------------
     def _rebuild_centres(self) -> None:
-        self._layout = self._build_layout()
+        self._hex_layout = self._build_layout()
         self._centres.clear()
         for q in range(self.cols):
             for r in range(self.rows):
@@ -326,11 +329,11 @@ class HexCanvas(Widget):
 
     # ------------------------------------------------------------------
     def _hit(self, x: int, y: int) -> tuple[int, int] | None:
-        if self._layout is None:
-            self._layout = self._build_layout()
+        if self._hex_layout is None:
+            self._hex_layout = self._build_layout()
 
         px, py = float(x) + 0.5, float(y) + 0.5
-        qf, rf, sf = self._layout.pixel_to_hex_fractional(px, py)
+        qf, rf, sf = self._hex_layout.pixel_to_hex_fractional(px, py)
         q, r, _ = cube_round(qf, rf, sf)
         key = (q, r)
         return key if key in self._centres else None
