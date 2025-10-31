@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from typing import TYPE_CHECKING
 
@@ -190,7 +190,7 @@ class HexCanvas(Widget):
         radius: int = 10,
         tiles: Dict[Tuple[int, int], str] | None = None,
         labels: Dict[Tuple[int, int], str] | None = None,
-        aspect_y: Optional[float] = None,
+        aspect_y: float | None = None,
     ) -> None:
         super().__init__()
         self._centres: Dict[Tuple[int, int], Point] = {}
