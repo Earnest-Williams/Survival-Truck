@@ -233,10 +233,19 @@ class HexCanvas(Widget):
             for r in range(self.rows):
                 self._centres[(q, r)] = self._centre_for(q, r)
 
+    @staticmethod
+    def _offset_to_axial(q: int, r: int) -> tuple[int, int]:
+        """Convert odd-q offset coordinates into axial coordinates."""
+
+        axial_q = q
+        axial_r = r - (q - (q & 1)) // 2
+        return axial_q, axial_r
+
     def _centre_for(self, q: int, r: int) -> Point:
         if self._layout is None:
             self._layout = self._build_layout()
-        return self._layout.hex_to_pixel(q, r)
+        axial_q, axial_r = self._offset_to_axial(q, r)
+        return self._layout.hex_to_pixel(axial_q, axial_r)
 
     def _build_layout(self) -> Layout:
         radius = float(self.radius)
