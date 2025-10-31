@@ -35,6 +35,7 @@ from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
 from .diplomacy import DiplomacyView
 from .hex_map import HexMapView
+from .help import HelpScreen, HelpSection, build_help_commands
 from .truck_layout import TruckLayoutView
 
 
@@ -95,6 +96,7 @@ class SurvivalTruckApp(App[Any]):
         Binding("q", "quit", "Quit"),
         Binding("space", "next_turn", "Next Day"),
         Binding("r", "reset_route", "Clear Route"),
+        Binding("f1", "toggle_help", "Help"),
     ]
 
     def __init__(
@@ -142,6 +144,7 @@ class SurvivalTruckApp(App[Any]):
         self.truck_view = TruckLayoutView()
         self.control_widget = ControlPanelWidget(self.control_panel)
         self.log_widget = TurnLogWidget(self.log_channel)
+        self._help_visible = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -201,6 +204,19 @@ class SurvivalTruckApp(App[Any]):
     def action_reset_route(self) -> None:
         self.control_panel.clear_route()
         self.control_widget.refresh_from_panel()
+
+    def action_toggle_help(self) -> None:
+        if self._help_visible:
+            self.pop_screen()
+            return
+
+        sections = self._build_help_sections()
+        help_screen = HelpScreen(sections, on_close=self._on_help_closed)
+        self._help_visible = True
+        self.push_screen(help_screen)
+
+    def _on_help_closed(self) -> None:
+        self._help_visible = False
 
     # ------------------------------------------------------------------
     def on_hex_map_view_coordinate_selected(self, message: HexMapView.CoordinateSelected) -> None:
@@ -292,6 +308,37 @@ class SurvivalTruckApp(App[Any]):
         elif context.notifications:
             stats["Last Turn"] = context.notifications[-1].message
         return stats
+
+    def _build_help_sections(self) -> list[HelpSection]:
+        sections: list[HelpSection] = []
+
+        app_bindings = self._bindings_for(self)
+        if app_bindings:
+            sections.append(HelpSection("Application", build_help_commands(app_bindings)))
+
+        map_bindings = self._bindings_for(self.map_view)
+        if map_bindings:
+            sections.append(HelpSection("Map", build_help_commands(map_bindings)))
+
+        dashboard_bindings = self._bindings_for(self.dashboard)
+        if dashboard_bindings:
+            sections.append(HelpSection("Dashboard", build_help_commands(dashboard_bindings)))
+
+        control_bindings = self._bindings_for(self.control_widget)
+        if control_bindings:
+            sections.append(HelpSection("Control Panel", build_help_commands(control_bindings)))
+
+        return sections
+
+    @staticmethod
+    def _bindings_for(target: object) -> list[Binding]:
+        bindings: list[Binding] = []
+        candidate = getattr(target, "BINDINGS", None)
+        if isinstance(candidate, Sequence):
+            for binding in candidate:
+                if isinstance(binding, Binding):
+                    bindings.append(binding)
+        return bindings
 
     # ------------------------------------------------------------------
     @staticmethod
