@@ -3,7 +3,114 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Tuple
 
-from rich.canvas import Canvas as RichCanvas
+from typing import TYPE_CHECKING
+
+try:  # pragma: no cover - prefer Rich's Canvas when available
+    from rich.canvas import Canvas as RichCanvas
+except ModuleNotFoundError:  # pragma: no cover - fallback for newer Rich releases
+    from dataclasses import dataclass
+
+    from rich.console import Console, ConsoleOptions, RenderResult
+    from rich.measure import Measurement
+    from rich.style import Style
+    from rich.text import Text
+
+    @dataclass
+    class _Cell:
+        char: str
+        style: Style | str | None
+
+    class RichCanvas:
+        """Minimal stand-in for :class:`rich.canvas.Canvas`.
+
+        Newer versions of Rich no longer expose ``rich.canvas``.  Textual still
+        expects a renderable canvas, so we emulate the parts of the original API
+        that :class:`HexCanvas` relies on (setting cells, drawing lines, and
+        rendering text).  The implementation stores a simple 2D grid of cells and
+        renders them as ``Text`` lines for Rich.
+        """
+
+        def __init__(self, width: int, height: int) -> None:
+            self.width = width
+            self.height = height
+            self._grid: list[list[_Cell]] = [
+                [_Cell(" ", None) for _ in range(width)] for _ in range(height)
+            ]
+
+        @staticmethod
+        def _normalise_style(style: Style | str | None) -> Style | str | None:
+            if isinstance(style, str) and style and not style.startswith("on "):
+                # The original canvas treated bare colours as edge fills; mimic
+                # that behaviour with a background colour so the line remains
+                # visible against the dark theme.
+                return f"on {style}"
+            return style
+
+        def set(self, x: int, y: int, char: str, *, style: Style | str | None = None) -> None:
+            if 0 <= x < self.width and 0 <= y < self.height:
+                self._grid[y][x] = _Cell(char, style)
+
+        def text(self, x: int, y: int, value: str, *, style: Style | str | None = None) -> None:
+            for offset, char in enumerate(value):
+                self.set(x + offset, y, char, style=style)
+
+        def line(
+            self,
+            start: tuple[float, float],
+            end: tuple[float, float],
+            *,
+            style: Style | str | None = None,
+        ) -> None:
+            style = self._normalise_style(style)
+            x1, y1 = start
+            x2, y2 = end
+            x1 = int(round(x1))
+            y1 = int(round(y1))
+            x2 = int(round(x2))
+            y2 = int(round(y2))
+
+            dx = abs(x2 - x1)
+            dy = abs(y2 - y1)
+            sx = 1 if x1 < x2 else -1
+            sy = 1 if y1 < y2 else -1
+            err = dx - dy
+
+            while True:
+                self.set(x1, y1, " ", style=style)
+                if x1 == x2 and y1 == y2:
+                    break
+                e2 = err * 2
+                if e2 > -dy:
+                    err -= dy
+                    x1 += sx
+                if e2 < dx:
+                    err += dx
+                    y1 += sy
+
+        def __rich_console__(
+            self, console: Console, options: ConsoleOptions
+        ) -> RenderResult:  # pragma: no cover - exercised via Textual render
+            for row in self._grid:
+                text = Text()
+                for cell in row:
+                    style = cell.style
+                    if isinstance(style, Style):
+                        style_obj = style
+                    elif style:
+                        style_obj = console.get_style(style)
+                    else:
+                        style_obj = None
+                    text.append(cell.char, style=style_obj)
+                yield text
+
+        def __rich_measure__(
+            self, console: Console, options: ConsoleOptions
+        ) -> Measurement:  # pragma: no cover - trivial
+            return Measurement(self.width, self.width)
+
+
+if TYPE_CHECKING:  # pragma: no cover - typing aid for mypy
+    from rich.canvas import Canvas as RichCanvas
 from textual import events
 from textual.message import Message
 from textual.reactive import reactive
