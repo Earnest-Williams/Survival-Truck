@@ -210,7 +210,7 @@ class HexCanvas(Widget):
     ) -> None:
         super().__init__()
         self._centres: Dict[Tuple[int, int], Point] = {}
-        self._layout: Layout | None = None
+        self._hex_layout: Layout | None = None
         self.cfg: HexLayoutConfig | None = None
         self._initial_hex_height = float(radius) * 2.0
         self.cols = cols
@@ -237,7 +237,7 @@ class HexCanvas(Widget):
 
     # ------------------------------------------------------------------
     def _rebuild_centres(self) -> None:
-        if self._layout is None:
+        if self._hex_layout is None:
             self._rebuild_layout()
         self._centres.clear()
         for q in range(self.cols):
@@ -246,10 +246,10 @@ class HexCanvas(Widget):
 
     def _centre_for(self, q: int, r: int) -> tuple[float, float]:
         config = self._ensure_config()
-        if self._layout is None:
+        if self._hex_layout is None:
             self._rebuild_layout()
 
-        layout = self._layout
+        layout = self._hex_layout
         offset_mode = config.offset_mode
         if config.orientation == "pointy":
             parity = (r & 1) if offset_mode in ("odd-r", "even-r") else 0
@@ -279,7 +279,7 @@ class HexCanvas(Widget):
             size_y = (height / math.sqrt(3.0)) * flatten
             orientation = FLAT
 
-        self._layout = Layout(
+        self._hex_layout = Layout(
             orientation=orientation,
             size_x=size_x,
             size_y=size_y,
@@ -291,9 +291,9 @@ class HexCanvas(Widget):
     def render(self) -> RichCanvas:
         width, height = self.size
         canvas = RichCanvas(width, height)
-        if self._layout is None:
+        if self._hex_layout is None:
             self._rebuild_layout()
-        layout = self._layout
+        layout = self._hex_layout
         assert layout is not None
 
         for (q, r), (cx, cy) in self._centres.items():
@@ -433,10 +433,10 @@ class HexCanvas(Widget):
     # ------------------------------------------------------------------
     def hex_at_pixel(self, px: float, py: float) -> tuple[int, int]:
         config = self._ensure_config()
-        if self._layout is None:
+        if self._hex_layout is None:
             self._rebuild_layout()
 
-        qf, rf, _ = self._layout.pixel_to_hex_fractional(px, py)
+        qf, rf, _ = self._hex_layout.pixel_to_hex_fractional(px, py)
 
         if config.orientation == "pointy":
             ri = round(rf)
