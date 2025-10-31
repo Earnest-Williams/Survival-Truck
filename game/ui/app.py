@@ -31,6 +31,7 @@ from ..world.rng import WorldRandomness
 from ..world.sites import Site
 from ..world.stateframes import SiteStateFrame
 from .channels import NotificationChannel, TurnLogChannel
+from .config_store import HexLayoutConfig
 from .control_panel import ControlPanel, ControlPanelWidget
 from .dashboard import DashboardView, TurnLogWidget
 from .diplomacy import DiplomacyView
@@ -178,6 +179,7 @@ class SurvivalTruckApp(App[Any]):
         self.control_widget = ControlPanelWidget(self.control_panel)
         self.log_widget = TurnLogWidget(self.log_channel)
         self._help_visible = False
+        self.dashboard.update_layout_config(self._summarise_layout_config(HexLayoutConfig.load()))
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -423,6 +425,31 @@ class SurvivalTruckApp(App[Any]):
             sections.append(HelpSection("Control Panel", build_help_commands(control_bindings)))
 
         return sections
+
+    @staticmethod
+    def _summarise_layout_config(config: HexLayoutConfig) -> dict[str, str]:
+        return {
+            "Orientation": config.orientation.title(),
+            "Hex Height": f"{config.hex_height:.1f}",
+            "Flatten": f"{config.flatten:.2f}",
+            "Origin": f"({config.origin_x:.1f}, {config.origin_y:.1f})",
+            "Offset": config.offset_mode,
+        }
+
+    def on_hex_canvas_layout_config_changed(
+        self, event: HexCanvas.LayoutConfigChanged
+    ) -> None:
+        summary = self._summarise_layout_config(event.config)
+        self.dashboard.update_layout_config(summary)
+
+    def on_hex_canvas_layout_config_saved(self, event: HexCanvas.LayoutConfigSaved) -> None:
+        summary = self._summarise_layout_config(event.config)
+        self.dashboard.update_layout_config(summary)
+        self.notification_channel.notify(
+            day=self.season_tracker.current_day,
+            message="Hex layout saved",
+            payload=summary,
+        )
 
     @staticmethod
     def _bindings_for(target: object) -> list[Binding]:

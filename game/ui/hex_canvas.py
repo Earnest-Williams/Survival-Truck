@@ -112,6 +112,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for newer Rich releas
 if TYPE_CHECKING:  # pragma: no cover - typing aid for mypy
     from rich.canvas import Canvas as RichCanvas
 from textual import events
+from textual.binding import Binding
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -161,17 +162,19 @@ def point_in_convex_poly(x: float, y: float, poly: Poly) -> bool:
 class HexCanvas(Widget):
     """Hex grid drawn on a Rich canvas with hover and click support."""
 
-    DEFAULT_BINDINGS = [
-        ("shift+up", "flatten_increase", "Flatten +"),
-        ("shift+down", "flatten_decrease", "Flatten -"),
-        ("shift+right", "height_increase", "H +"),
-        ("shift+left", "height_decrease", "H -"),
-        ("ctrl+shift+left", "origin_left", "OX -"),
-        ("ctrl+shift+right", "origin_right", "OX +"),
-        ("ctrl+shift+up", "origin_up", "OY -"),
-        ("ctrl+shift+down", "origin_down", "OY +"),
-        ("ctrl+s", "save_layout", "Save layout"),
-        ("ctrl+r", "reload_layout", "Reload layout"),
+    BINDINGS = [
+        Binding("shift+up", "flatten_increase", "Flatten +"),
+        Binding("shift+down", "flatten_decrease", "Flatten -"),
+        Binding("shift+right", "height_increase", "H +"),
+        Binding("shift+left", "height_decrease", "H -"),
+        Binding("ctrl+shift+left", "origin_left", "OX -"),
+        Binding("ctrl+shift+right", "origin_right", "OX +"),
+        Binding("ctrl+shift+up", "origin_up", "OY -"),
+        Binding("ctrl+shift+down", "origin_down", "OY +"),
+        Binding("ctrl+o", "orientation_toggle", "Toggle orient"),
+        Binding("ctrl+shift+o", "offset_cycle", "Cycle offset"),
+        Binding("ctrl+s", "save_layout", "Save layout"),
+        Binding("ctrl+r", "reload_layout", "Reload layout"),
     ]
 
     DEFAULT_CSS = """
@@ -219,13 +222,16 @@ class HexCanvas(Widget):
         self.labels = dict(labels or {})
         self.highlights = {}
 
+    OFFSET_SEQUENCE: tuple[str, ...] = ("odd-r", "even-r", "odd-q", "even-q")
+
     def on_mount(self) -> None:
         config_exists = CONFIG_PATH.exists()
         self.cfg = HexLayoutConfig.load()
-        if not config_exists:
+        if not config_exists and self.cfg is not None:
             self.cfg.hex_height = self._initial_hex_height
         self._rebuild_layout()
         self._rebuild_centres()
+        self._emit_config_changed()
 
     def watch_cols(self, _value: int) -> None:
         self._rebuild_centres()
@@ -364,12 +370,22 @@ class HexCanvas(Widget):
             self.cfg = HexLayoutConfig.load()
         return self.cfg
 
+    def _emit_config_changed(self, *, saved: bool = False) -> None:
+        cfg = self._ensure_config()
+        message: Message
+        if saved:
+            message = self.LayoutConfigSaved(cfg)
+        else:
+            message = self.LayoutConfigChanged(cfg)
+        self.post_message(message)
+
     def action_flatten_increase(self) -> None:
         cfg = self._ensure_config()
         cfg.flatten = min(1.20, round(cfg.flatten + 0.01, 3))
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
 
     def action_flatten_decrease(self) -> None:
         cfg = self._ensure_config()
@@ -377,6 +393,7 @@ class HexCanvas(Widget):
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
 
     def action_height_increase(self) -> None:
         cfg = self._ensure_config()
@@ -384,6 +401,7 @@ class HexCanvas(Widget):
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
 
     def action_height_decrease(self) -> None:
         cfg = self._ensure_config()
@@ -391,6 +409,7 @@ class HexCanvas(Widget):
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
 
     def action_origin_left(self) -> None:
         cfg = self._ensure_config()
@@ -398,6 +417,7 @@ class HexCanvas(Widget):
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
 
     def action_origin_right(self) -> None:
         cfg = self._ensure_config()
@@ -405,6 +425,7 @@ class HexCanvas(Widget):
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
 
     def action_origin_up(self) -> None:
         cfg = self._ensure_config()
@@ -412,6 +433,7 @@ class HexCanvas(Widget):
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
 
     def action_origin_down(self) -> None:
         cfg = self._ensure_config()
@@ -419,16 +441,38 @@ class HexCanvas(Widget):
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
+
+    def action_orientation_toggle(self) -> None:
+        cfg = self._ensure_config()
+        cfg.orientation = "flat" if cfg.orientation == "pointy" else "pointy"
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
+        self._emit_config_changed()
+
+    def action_offset_cycle(self) -> None:
+        cfg = self._ensure_config()
+        try:
+            index = self.OFFSET_SEQUENCE.index(cfg.offset_mode)
+        except ValueError:
+            index = 0
+        cfg.offset_mode = self.OFFSET_SEQUENCE[(index + 1) % len(self.OFFSET_SEQUENCE)]
+        self._rebuild_centres()
+        self.refresh()
+        self._emit_config_changed()
 
     def action_save_layout(self) -> None:
         cfg = self._ensure_config()
         cfg.save()
+        self._emit_config_changed(saved=True)
 
     def action_reload_layout(self) -> None:
         self.cfg = HexLayoutConfig.load()
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
+        self._emit_config_changed()
 
     # ------------------------------------------------------------------
     def hex_at_pixel(self, px: float, py: float) -> tuple[int, int]:
@@ -485,3 +529,14 @@ class HexCanvas(Widget):
             super().__init__()
             self.q = q
             self.r = r
+
+    class LayoutConfigChanged(Message):
+        """Raised when the hex layout configuration has been adjusted."""
+
+        def __init__(self, config: HexLayoutConfig) -> None:
+            super().__init__()
+            self.config = config
+
+    class LayoutConfigSaved(LayoutConfigChanged):
+        """Raised when the hex layout configuration has been persisted."""
+
