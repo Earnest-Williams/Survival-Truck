@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from math import sqrt
 from typing import Dict, List, Tuple
 
 from typing import TYPE_CHECKING
@@ -116,7 +117,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from .hex_layout import Layout, layout_flat
+from .hex_layout import Layout, cube_round, layout_pointy
 
 DEFAULT_ASPECT_Y = 0.55
 
@@ -240,13 +241,15 @@ class HexCanvas(Widget):
 
     def _build_layout(self) -> Layout:
         radius = float(self.radius)
-        size_y = radius * self.aspect_y
+        aspect = float(self.aspect_y)
+        width = sqrt(3.0) * radius
+        height = 2.0 * radius * aspect
         return Layout(
-            layout_flat,
+            layout_pointy,
             size_x=radius,
-            size_y=size_y,
-            origin_x=radius + 1.0,
-            origin_y=size_y + 1.0,
+            size_y=radius * aspect,
+            origin_x=width / 2.0,
+            origin_y=height / 2.0,
         )
 
     # ------------------------------------------------------------------
@@ -319,12 +322,14 @@ class HexCanvas(Widget):
 
     # ------------------------------------------------------------------
     def _hit(self, x: int, y: int) -> tuple[int, int] | None:
-        px, py = float(x), float(y)
-        for key, (cx, cy) in self._centres.items():
-            points = hex_points_pointy_top(cx, cy, float(self.radius), self.aspect_y)
-            if point_in_convex_poly(px + 0.5, py + 0.5, points):
-                return key
-        return None
+        if self._layout is None:
+            self._layout = self._build_layout()
+
+        px, py = float(x) + 0.5, float(y) + 0.5
+        qf, rf, sf = self._layout.pixel_to_hex_fractional(px, py)
+        q, r, _ = cube_round(qf, rf, sf)
+        key = (q, r)
+        return key if key in self._centres else None
 
     async def on_mouse_move(self, event: events.MouseMove) -> None:
         new_hover = self._hit(event.x, event.y)
