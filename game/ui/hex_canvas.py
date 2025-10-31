@@ -116,6 +116,8 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
+from .hex_layout import Layout, layout_flat
+
 DEFAULT_ASPECT_Y = 0.55
 
 
@@ -194,6 +196,7 @@ class HexCanvas(Widget):
     ) -> None:
         super().__init__()
         self._centres: Dict[Tuple[int, int], Point] = {}
+        self._layout: Layout | None = None
         self.cols = cols
         self.rows = rows
         self.radius = radius
@@ -224,16 +227,27 @@ class HexCanvas(Widget):
 
     # ------------------------------------------------------------------
     def _rebuild_centres(self) -> None:
+        self._layout = self._build_layout()
         self._centres.clear()
         for q in range(self.cols):
             for r in range(self.rows):
                 self._centres[(q, r)] = self._centre_for(q, r)
 
     def _centre_for(self, q: int, r: int) -> Point:
-        size = float(self.radius)
-        x_pos = q * (size * 1.5) + size + 1.0
-        y_pos = (r + 0.5 * (q & 1)) * (size * math.sqrt(3) * self.aspect_y) + (size * self.aspect_y) + 1.0
-        return (x_pos, y_pos)
+        if self._layout is None:
+            self._layout = self._build_layout()
+        return self._layout.hex_to_pixel(q, r)
+
+    def _build_layout(self) -> Layout:
+        radius = float(self.radius)
+        size_y = radius * self.aspect_y
+        return Layout(
+            layout_flat,
+            size_x=radius,
+            size_y=size_y,
+            origin_x=radius + 1.0,
+            origin_y=size_y + 1.0,
+        )
 
     # ------------------------------------------------------------------
     def render(self) -> RichCanvas:
