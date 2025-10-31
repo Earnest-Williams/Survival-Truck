@@ -17,7 +17,6 @@ Usage:
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple
-from collections import defaultdict
 import heapq
 
 # --- Types --------------------------------------------------------------------
@@ -67,13 +66,13 @@ class PathState:
     blocked: Set[Hex] = field(default_factory=set)
 
     # Base cost and additive layers:
-    base_cost: Dict[Hex, float] = field(default_factory=lambda: defaultdict(lambda: 1.0))
-    slope_cost: Dict[Hex, float] = field(default_factory=lambda: defaultdict(float))
-    hazard_cost: Dict[Hex, float] = field(default_factory=lambda: defaultdict(float))
-    noise_cost: Dict[Hex, float] = field(default_factory=lambda: defaultdict(float))
+    base_cost: Dict[Hex, float] = field(default_factory=dict)
+    slope_cost: Dict[Hex, float] = field(default_factory=dict)
+    hazard_cost: Dict[Hex, float] = field(default_factory=dict)
+    noise_cost: Dict[Hex, float] = field(default_factory=dict)
 
     # Road "bonus": typically <= 0 to bias selection toward roads.
-    road_bonus: Dict[Hex, float] = field(default_factory=lambda: defaultdict(float))
+    road_bonus: Dict[Hex, float] = field(default_factory=dict)
 
     # Global multipliers:
     truck_load_mult: float = 1.0
@@ -91,11 +90,11 @@ def move_cost(a: Hex, b: Hex, *, state: PathState) -> float:
     """
     Compute final edge cost from a -> b using layered costs and multipliers.
     """
-    c = state.base_cost[b]
-    c += state.slope_cost[b]
-    c += state.hazard_cost[b]
-    c += state.noise_cost[b]
-    c += state.road_bonus[b]  # this can be negative for roads
+    c = state.base_cost.get(b, 1.0)
+    c += state.slope_cost.get(b, 0.0)
+    c += state.hazard_cost.get(b, 0.0)
+    c += state.noise_cost.get(b, 0.0)
+    c += state.road_bonus.get(b, 0.0)  # this can be negative for roads
 
     # Apply global multipliers last
     c *= state.truck_load_mult
