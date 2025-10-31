@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .map import BiomeType, ChunkCoord, MapChunk
-from .sites import AttentionCurve, Site, SiteType
+from .sites import AttentionCurve, RiskCurve, Site, SiteType
 from .stateframes import SiteStateFrame
 
 _SIMPLE_TYPES = (str, int, float, bool)
@@ -372,6 +372,45 @@ class AttentionCurveModel(BaseModel):
         return AttentionCurve(peak=self.peak, mu=self.mu, sigma=self.sigma)
 
 
+class RiskCurveModel(BaseModel):
+    """Serializable representation of :class:`~game.world.sites.RiskCurve`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    maximum: float = Field(default=1.0, gt=0.0)
+    growth_rate: float = Field(default=0.08, gt=0.0)
+    midpoint: float = 55.0
+    floor: float = Field(default=0.0, ge=0.0)
+
+    @field_validator("maximum", "growth_rate", "midpoint", "floor")
+    @classmethod
+    def _coerce_float(cls, value: float) -> float:
+        return float(value)
+
+    @model_validator(mode="after")
+    def _validate_floor(self) -> "RiskCurveModel":
+        if self.floor > self.maximum:
+            raise ValueError("floor cannot exceed maximum")
+        return self
+
+    @classmethod
+    def from_domain(cls, curve: RiskCurve) -> "RiskCurveModel":
+        return cls(
+            maximum=curve.maximum,
+            growth_rate=curve.growth_rate,
+            midpoint=curve.midpoint,
+            floor=curve.floor,
+        )
+
+    def to_domain(self) -> RiskCurve:
+        return RiskCurve(
+            maximum=self.maximum,
+            growth_rate=self.growth_rate,
+            midpoint=self.midpoint,
+            floor=self.floor,
+        )
+
+
 class SiteSnapshot(BaseModel):
     """Serializable representation of a :class:`~game.world.sites.Site`."""
 
@@ -384,6 +423,7 @@ class SiteSnapshot(BaseModel):
     population: int = Field(default=0, ge=0)
     controlling_faction: str | None = None
     attention_curve: AttentionCurveModel = Field(default_factory=AttentionCurveModel)
+    risk_curve: RiskCurveModel = Field(default_factory=RiskCurveModel)
     settlement_id: str | None = None
     connections: dict[str, float] = Field(default_factory=dict)
 
@@ -420,6 +460,7 @@ class SiteSnapshot(BaseModel):
             population=site.population,
             controlling_faction=site.controlling_faction,
             attention_curve=AttentionCurveModel.from_domain(site.attention_curve),
+            risk_curve=RiskCurveModel.from_domain(site.risk_curve),
             settlement_id=site.settlement_id,
             connections=site.connections,
         )
@@ -433,6 +474,7 @@ class SiteSnapshot(BaseModel):
             population=self.population,
             controlling_faction=self.controlling_faction,
             attention_curve=self.attention_curve.to_domain(),
+            risk_curve=self.risk_curve.to_domain(),
             settlement_id=self.settlement_id,
             connections=self.connections,
         )
@@ -527,6 +569,7 @@ class WorldSnapshotMetadata(BaseModel):
 
 __all__ = [
     "AttentionCurveModel",
+    "RiskCurveModel",
     "ChunkSnapshot",
     "ChunkTileModel",
     "ResourceLogEntryModel",

@@ -29,7 +29,7 @@ from game.world.persistence import (
 )
 from game.world.rng import WorldRandomness
 from game.world.save_models import WorldSnapshot
-from game.world.sites import AttentionCurve, Site, SiteType
+from game.world.sites import AttentionCurve, RiskCurve, Site, SiteType
 from game.world.stateframes import SiteStateFrame
 
 
@@ -45,6 +45,7 @@ def _make_site(
     *,
     site_type: SiteType = SiteType.CAMP,
     connections: dict[str, float] | None = None,
+    risk_curve: RiskCurve | None = None,
 ) -> Site:
     return Site(
         identifier=identifier,
@@ -53,6 +54,8 @@ def _make_site(
         exploration_percent=10.0,
         scavenged_percent=5.0,
         attention_curve=AttentionCurve(peak=1.6, mu=5.0, sigma=2.0),
+        risk_curve=risk_curve
+        or RiskCurve(maximum=1.9, growth_rate=0.11, midpoint=37.0, floor=0.2),
         connections=connections or {},
     )
 
@@ -94,6 +97,7 @@ def test_world_snapshot_round_trip() -> None:
     assert restored_site.site_type is SiteType.CAMP
     assert restored_site.connections == {"delta": 2.0}
     assert restored_site.attention_curve == site.attention_curve
+    assert restored_site.risk_curve == site.risk_curve
 
     restored_state = snapshot.to_world_state()
     assert restored_state["notes"] == ["Arrived at camp"]
@@ -116,8 +120,14 @@ def test_persistence_round_trip(tmp_path: Path) -> None:
     assert loaded_config == config
 
     chunk = _make_chunk()
-    site_beta = _make_site("beta", site_type=SiteType.FARM, connections={"gamma": 3.0})
-    site_gamma = _make_site("gamma", site_type=SiteType.CITY, connections={"beta": 3.0})
+    beta_risk = RiskCurve(maximum=2.3, growth_rate=0.09, midpoint=48.0, floor=0.15)
+    gamma_risk = RiskCurve(maximum=1.5, growth_rate=0.2, midpoint=30.0, floor=0.05)
+    site_beta = _make_site(
+        "beta", site_type=SiteType.FARM, connections={"gamma": 3.0}, risk_curve=beta_risk
+    )
+    site_gamma = _make_site(
+        "gamma", site_type=SiteType.CITY, connections={"beta": 3.0}, risk_curve=gamma_risk
+    )
     snapshot = WorldSnapshot.from_components(
         day=3,
         chunks=[chunk],
@@ -151,8 +161,10 @@ def test_persistence_round_trip(tmp_path: Path) -> None:
     assert "gamma" in site_map
     assert restored_sites["beta"].site_type is SiteType.FARM
     assert "gamma" in restored_sites["beta"].connections
+    assert restored_sites["beta"].risk_curve == beta_risk
     assert restored_sites["gamma"].site_type is SiteType.CITY
     assert "beta" in restored_sites["gamma"].connections
+    assert restored_sites["gamma"].risk_curve == gamma_risk
 
     records = list(iter_daily_diffs(engine, "slot-a"))
     assert len(records) == 1
@@ -161,6 +173,8 @@ def test_persistence_round_trip(tmp_path: Path) -> None:
     iter_sites = iter_snapshot.to_site_map()
     assert iter_sites["beta"].identifier == "beta"
     assert iter_sites["gamma"].connections == {"beta": 3.0}
+    assert iter_sites["beta"].risk_curve == beta_risk
+    assert iter_sites["gamma"].risk_curve == gamma_risk
 
 
 def test_seasonal_snapshot_round_trip(tmp_path: Path) -> None:
