@@ -166,7 +166,7 @@ def test_travel_cost_reflects_weight_and_power():
             category=ItemCategory.MATERIALS,
             quantity=700.0,
             weight_per_unit=1.0,
-            volume_per_unit=1.0,
+            volume_per_unit=0.1,
         )
     )
     engine.world.add_singleton(TruckComponent(truck=truck))

@@ -11,6 +11,7 @@ if TYPE_CHECKING:  # pragma: no cover - imported only for type checkers
     from .control_panel import ControlPanel, ControlPanelWidget
     from .dashboard import DashboardView, TurnLogWidget
     from .diplomacy import DiplomacyView
+    from .hex_canvas import HexCanvas
     from .hex_map import HexMapView, MapSelection
     from .truck_layout import TruckLayoutView
 
@@ -20,6 +21,7 @@ __all__ = [
     "ControlPanelWidget",
     "DashboardView",
     "DiplomacyView",
+    "HexCanvas",
     "HexMapView",
     "LogEntry",
     "MapSelection",
@@ -41,6 +43,7 @@ _EAGER_EXPORTS = {
     "DashboardView": "game.ui.dashboard",
     "TurnLogWidget": "game.ui.dashboard",
     "DiplomacyView": "game.ui.diplomacy",
+    "HexCanvas": "game.ui.hex_canvas",
     "HexMapView": "game.ui.hex_map",
     "MapSelection": "game.ui.hex_map",
     "TruckLayoutView": "game.ui.truck_layout",
