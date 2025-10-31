@@ -1,3 +1,5 @@
+import pytest
+
 from survival_truck.hexpath import Axial, Layout, Offset
 from survival_truck.hexpath import neighbors_axial, neighbors_offset
 
@@ -9,61 +11,99 @@ def test_neighbors_axial_six():
     assert Axial(0, 1) in n
 
 
-def test_neighbors_offset_parity_odd_r():
-    o = Offset(2, 3, Layout.ODD_R)  # row 3 odd
-    n = list(neighbors_offset(o))
-    assert len(n) == 6
-    o_even = Offset(2, 2, Layout.ODD_R)
-    n_even = {(x.col, x.row) for x in neighbors_offset(o_even)}
-    n_odd = {(x.col, x.row) for x in neighbors_offset(o)}
-    assert n_even != n_odd
-
-
-def test_neighbors_offset_even_q_canonical():
-    base_even = Offset(4, 2, Layout.EVEN_Q)  # even column
-    base_odd = Offset(5, 2, Layout.EVEN_Q)  # odd column
-
-    even_expected = {
-        (5, 2),
-        (5, 1),
-        (4, 1),
-        (3, 1),
-        (3, 2),
-        (4, 3),
-    }
-    odd_expected = {
-        (6, 3),
-        (6, 2),
-        (5, 1),
-        (4, 2),
-        (4, 3),
-        (5, 3),
-    }
-
-    assert {(n.col, n.row) for n in neighbors_offset(base_even)} == even_expected
-    assert {(n.col, n.row) for n in neighbors_offset(base_odd)} == odd_expected
-
-
-def test_neighbors_offset_odd_q_canonical():
-    base_even = Offset(4, 2, Layout.ODD_Q)  # even column
-    base_odd = Offset(5, 2, Layout.ODD_Q)  # odd column
-
-    even_expected = {
-        (5, 3),
-        (5, 2),
-        (4, 1),
-        (3, 2),
-        (3, 3),
-        (4, 3),
-    }
-    odd_expected = {
-        (6, 2),
-        (6, 1),
-        (5, 1),
-        (4, 1),
-        (4, 2),
-        (5, 3),
-    }
-
-    assert {(n.col, n.row) for n in neighbors_offset(base_even)} == even_expected
-    assert {(n.col, n.row) for n in neighbors_offset(base_odd)} == odd_expected
+@pytest.mark.parametrize(
+    ("offset", "expected"),
+    [
+        (
+            Offset(4, 4, Layout.EVEN_R),
+            {
+                (3, 4),
+                (4, 3),
+                (4, 5),
+                (5, 3),
+                (5, 4),
+                (5, 5),
+            },
+        ),
+        (
+            Offset(4, 5, Layout.EVEN_R),
+            {
+                (3, 4),
+                (3, 5),
+                (3, 6),
+                (4, 4),
+                (4, 6),
+                (5, 5),
+            },
+        ),
+        (
+            Offset(4, 4, Layout.ODD_R),
+            {
+                (3, 3),
+                (3, 4),
+                (3, 5),
+                (4, 3),
+                (4, 5),
+                (5, 4),
+            },
+        ),
+        (
+            Offset(4, 5, Layout.ODD_R),
+            {
+                (3, 5),
+                (4, 4),
+                (4, 6),
+                (5, 4),
+                (5, 5),
+                (5, 6),
+            },
+        ),
+        (
+            Offset(4, 4, Layout.EVEN_Q),
+            {
+                (3, 4),
+                (3, 5),
+                (4, 3),
+                (4, 5),
+                (5, 4),
+                (5, 5),
+            },
+        ),
+        (
+            Offset(5, 4, Layout.EVEN_Q),
+            {
+                (4, 3),
+                (4, 4),
+                (5, 3),
+                (5, 5),
+                (6, 3),
+                (6, 4),
+            },
+        ),
+        (
+            Offset(4, 4, Layout.ODD_Q),
+            {
+                (3, 3),
+                (3, 4),
+                (4, 3),
+                (4, 5),
+                (5, 3),
+                (5, 4),
+            },
+        ),
+        (
+            Offset(5, 4, Layout.ODD_Q),
+            {
+                (4, 4),
+                (4, 5),
+                (5, 3),
+                (5, 5),
+                (6, 4),
+                (6, 5),
+            },
+        ),
+    ],
+)
+def test_neighbors_offset_exact_neighbor_sets(offset: Offset, expected: set[tuple[int, int]]):
+    actual = {(n.col, n.row) for n in neighbors_offset(offset)}
+    assert actual == expected
