@@ -151,7 +151,7 @@ pytest-cov = "^5.0.0"
 
 * `textual` app with panes: Map, Log, Status, Truck, Diplomacy.
 * Hotkeys handled by `textual` bindings.
-* Optional developer charts via `matplotlib` in a separate debug mode.
+* Optional developer charts can be generated if you install `matplotlib` yourself; it is not bundled with the main runtime dependencies.
 
 ---
 
@@ -335,7 +335,7 @@ class GameWorld:
 
 ## Balancing and Debugging
 
-* Plot attention curves and yields with `devtools/balance.py` using `matplotlib`.
+* Plot attention curves and yields with your own tooling (for example, install `matplotlib` manually for ad-hoc analysis).
 * Keep all randomness behind `rng.make_rng(seed)` for reproducibility.
 * Store daily diffs and seasonal snapshots; allow rollback for profiling.
 
