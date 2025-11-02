@@ -259,7 +259,9 @@ class Pathfinder:
                 get_cost=self.edge_cost,
                 heuristic=self.heuristic,
             )
-            return list(path) if path else None
+            if path is None:
+                return None
+            return list(path)
         except TypeError:
             signature_failures += 1
 
@@ -272,7 +274,9 @@ class Pathfinder:
                 self.edge_cost,
                 self.heuristic,
             )
-            return list(path) if path else None
+            if path is None:
+                return None
+            return list(path)
         except TypeError:
             signature_failures += 1
 
