@@ -89,6 +89,42 @@ class PathState:
     # Increment this whenever any cost layer changes to invalidate cache.
     version: int = 0
 
+    # Internal cache for the computed minimum edge cost. This is not part of the
+    # public API, but helps avoid recomputing the bound on every heuristic call.
+    _cached_min_edge_cost: float = field(default=1.0, init=False, repr=False)
+    _cached_min_edge_version: int = field(default=-1, init=False, repr=False)
+
+    def min_possible_step_cost(self) -> float:
+        """Return a guaranteed lower bound on any traversable edge cost."""
+
+        # Default terrain with no overrides costs 1.0 before multipliers.
+        default_cost = max(0.01, 1.0 * self.truck_load_mult * self.weather_mult)
+
+        # Reuse cached value when the caller bumps ``version`` to reflect
+        # modifications to the cost layers.
+        if self._cached_min_edge_version == self.version:
+            return max(0.01, self._cached_min_edge_cost, default_cost)
+
+        candidates: Set[Hex] = set()
+        candidates.update(self.base_cost)
+        candidates.update(self.slope_cost)
+        candidates.update(self.hazard_cost)
+        candidates.update(self.noise_cost)
+        candidates.update(self.road_bonus)
+
+        min_cost = default_cost
+        for hex_ in candidates:
+            if hex_ in self.blocked:
+                continue
+            step_cost = move_cost((0, 0), hex_, state=self)
+            if step_cost < min_cost:
+                min_cost = step_cost
+
+        min_cost = max(0.01, min_cost)
+        self._cached_min_edge_cost = min_cost
+        self._cached_min_edge_version = self.version
+        return min_cost
+
 
 def move_cost(a: Hex, b: Hex, *, state: PathState) -> float:
     """
@@ -124,6 +160,7 @@ class Pathfinder:
     def __init__(self, state: PathState) -> None:
         self.state = state
         self._cache: Dict[Tuple[Hex, Hex, int], Optional[List[Hex]]] = {}
+        self._heuristic_min_step: float = state.min_step_cost
 
         # Try to import the external library once; keep callables if available.
         self._use_external = False
@@ -150,6 +187,8 @@ class Pathfinder:
         key = (start, goal, budget_key)
         if key in self._cache:
             return self._cache[key]
+
+        self._heuristic_min_step = self._effective_min_step_cost()
 
         if self._use_external and self._external_find_path is not None:
             path = self._run_external_astar(start, goal)
@@ -178,10 +217,14 @@ class Pathfinder:
 
     def heuristic(self, a: Hex, b: Hex) -> float:
         # Admissible if min_step_cost is <= true min edge cost
-        return cube_distance(a, b) * self.state.min_step_cost
+        return cube_distance(a, b) * self._heuristic_min_step
 
     def edge_cost(self, a: Hex, b: Hex) -> float:
         return move_cost(a, b, state=self.state)
+
+    def _effective_min_step_cost(self) -> float:
+        # Always stay on the safe (non-overestimating) side.
+        return min(self.state.min_step_cost, self.state.min_possible_step_cost())
 
     # --------- External adapter ----------------------------------------------
 
