@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Terminal-first survival and logistics simulation game."
 authors = ["Survival Truck Developers <devnull@example.com>"]
 readme = "README.md"
-packages = [{ include = "game" }]
+packages = [
+    { include = "game" },
+    { include = "survival_truck" },
+]
 keywords = ["textual", "survival", "tui", "game"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
