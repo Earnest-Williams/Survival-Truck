@@ -214,6 +214,12 @@ class HexCanvas(Widget):
         labels: Dict[Tuple[int, int], str] | None = None,
     ) -> None:
         super().__init__()
+        # Record whether a configuration file existed prior to constructing the
+        # widget.  ``HexLayoutConfig.load()`` will create a file on first use,
+        # so we capture the state up-front to detect a brand-new install even if
+        # subsequent helper calls materialise the file before ``on_mount``
+        # executes.
+        self._config_preexisted: bool = CONFIG_PATH.exists()
         self._centres: Dict[Tuple[int, int], Point] = {}
         self._hex_layout: Layout | None = None
         self.cfg: HexLayoutConfig | None = None
@@ -227,13 +233,19 @@ class HexCanvas(Widget):
     OFFSET_SEQUENCE: tuple[str, ...] = ("odd-r", "even-r", "odd-q", "even-q")
 
     def on_mount(self) -> None:
-        config_exists = CONFIG_PATH.exists()
+        config_exists = getattr(self, "_config_preexisted", CONFIG_PATH.exists())
         self.cfg = HexLayoutConfig.load()
         if not config_exists and self.cfg is not None:
             # The very first time we run the app the default layout size
             # should respect the requested radius.  Subsequent runs will
             # use the saved height from disk.
-            self.cfg.hex_height = self._initial_hex_height
+            if not math.isclose(self.cfg.hex_height, self._initial_hex_height, rel_tol=0.0, abs_tol=1e-6):
+                self.cfg.hex_height = self._initial_hex_height
+                # Mark the configuration dirty so downstream widgets know the
+                # on-disk file no longer matches the in-memory settings.  The
+                # auto-save hook in ``SurvivalTruckApp.on_shutdown`` relies on
+                # this flag to persist first-run adjustments.
+                self.cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self._emit_config_changed()
