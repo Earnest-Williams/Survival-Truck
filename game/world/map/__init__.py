@@ -1,14 +1,31 @@
-"""Hex-based world map utilities with chunk streaming and biome noise."""
+"""Hex-based world map utilities with chunk streaming and biome noise.
+
+This module provides functions for generating a deterministic,
+hex-based overworld, including terrain biomes and the placement of
+interactive sites.  The implementation here is based on the upstream
+game project but has been augmented to allow external systems to
+influence site generation.  In particular, the ``generate_site_network``
+function now accepts an optional ``site_type_bias`` mapping which can
+be used to weight the probabilities of different site archetypes
+according to faction ideology or other emergent simulation data.  When
+provided, these biases are multiplied with the default weights before
+normalisation, letting the simulation steer the distribution of cities,
+farms, power plants, camps, outposts and military ruins in the world.
+
+The bias mechanism is intentionally simple: if a bias of 2.0 is
+specified for ``SiteType.CITY``, the relative chance of spawning a
+city is doubled; if a bias of 0.5 is specified, the chance is halved.
+Biases that do not correspond to known site types are ignored.  If no
+bias mapping is supplied, the default distribution defined in
+``site_type_weights`` is used unmodified.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import (
-    TYPE_CHECKING,
-    ClassVar,
-)
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from opensimplex import OpenSimplex
 
@@ -45,6 +62,7 @@ class HexCoord:
     def distance_to(self, other: HexCoord) -> int:
         return max(abs(self.q - other.q), abs(self.r - other.r), abs(self.s - other.s))
 
+    # Direction vectors for axial coordinates
     DIRECTIONS: ClassVar[tuple[tuple[int, int], ...]] = (
         (1, 0),
         (1, -1),
@@ -235,9 +253,36 @@ def generate_site_network(  # noqa: PLR0915
     *,
     site_count: int = 8,
     radius: int = 6,
-    center: HexCoord | None = None,
+    center: Optional[HexCoord] = None,
+    site_type_bias: Optional[Mapping["SiteType", float]] = None,
 ) -> SiteNetwork:
-    """Procedurally place typed sites and build their connectivity graph."""
+    """Procedurally place typed sites and build their connectivity graph.
+
+    This function uses a deterministic RNG to choose positions within a
+    specified radius and assign each site a type drawn from a weighted
+    distribution.  The ``site_type_bias`` parameter may be used to
+    amplify or dampen the probability of selecting particular site
+    archetypes.  When provided, each bias value multiplies the
+    corresponding default weight before normalisation.  Site types not
+    present in the bias mapping retain their default weight.
+
+    Parameters
+    ----------
+    randomness:
+        The world RNG providing reproducible sequences.
+    site_count:
+        Number of sites to generate.
+    radius:
+        Maximum distance from ``center`` a site may be placed.
+    center:
+        Central coordinate around which sites are distributed.  Defaults
+        to the origin if not supplied.
+    site_type_bias:
+        Optional mapping from :class:`SiteType` to a multiplicative
+        weight.  Values greater than 1.0 increase the chance of
+        selecting that site type; values between 0 and 1 decrease it.
+        Passing ``None`` leaves the default distribution unchanged.
+    """
 
     if site_count <= 0:
         raise ValueError("site_count must be positive")
@@ -269,6 +314,10 @@ def generate_site_network(  # noqa: PLR0915
 
     from ..sites import AttentionCurve, Site, SiteType  # noqa: PLC0415
 
+    # Default weight distribution over site types.  These values encode
+    # how common each archetype should be in the absence of external
+    # influences.  Ideological or trait-driven systems may supply a
+    # ``site_type_bias`` to skew these numbers.
     site_type_weights: dict[SiteType, float] = {
         SiteType.CITY: 0.18,
         SiteType.FARM: 0.26,
@@ -277,6 +326,20 @@ def generate_site_network(  # noqa: PLR0915
         SiteType.OUTPOST: 0.1,
         SiteType.MILITARY_RUINS: 0.14,
     }
+
+    # Apply any biases provided.  Each bias acts as a multiplier on the
+    # default weight for its corresponding site type.  Unknown keys
+    # (those not matching a SiteType) are ignored.  After scaling, the
+    # weights will be normalised to form a probability distribution.
+    if site_type_bias:
+        for stype, bias in site_type_bias.items():
+            try:
+                # Only adjust if the stype exists in defaults
+                if stype in site_type_weights:
+                    site_type_weights[stype] *= float(bias)
+            except Exception:
+                # Defensive: ignore invalid bias keys or values
+                continue
 
     attention_profiles: dict[SiteType, tuple[float, float, float]] = {
         SiteType.CITY: (2.4, 40.0, 16.0),
@@ -296,6 +359,7 @@ def generate_site_network(  # noqa: PLR0915
         SiteType.MILITARY_RUINS: (0, 150),
     }
 
+    # Recompute the probability distribution after applying biases
     weights_total = sum(site_type_weights.values())
     type_choices = list(site_type_weights.keys())
     probabilities = [weight / weights_total for weight in site_type_weights.values()]
@@ -323,6 +387,8 @@ def generate_site_network(  # noqa: PLR0915
             attention_curve=curve,
         )
 
+    # Build a connectivity graph by linking each site to its nearest
+    # neighbours.  Each connection stores a cost equal to the hex distance.
     connections: dict[str, dict[str, float]] = {identifier: {} for identifier in positions}
     for identifier, origin in positions.items():
         neighbour_distances: list[tuple[str, int]] = [
@@ -339,11 +405,14 @@ def generate_site_network(  # noqa: PLR0915
             connections.setdefault(neighbour_id, {})[identifier] = cost
         connections[identifier].update(neighbour_costs)
 
+    # Ensure that the Site objects know about their connections by
+    # registering neighbours in the internal graph structure.
     for identifier, neighbour_costs in connections.items():
         site = sites[identifier]
         for neighbour_id, cost in neighbour_costs.items():
             site.connect(neighbour_id, cost=cost)
 
+    # Sort neighbour mappings to produce deterministic connection ordering
     ordered_connections = {
         identifier: dict(sorted(neighbours.items()))
         for identifier, neighbours in connections.items()

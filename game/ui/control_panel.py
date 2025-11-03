@@ -1,4 +1,12 @@
-"""Interactive command helpers for planning a turn."""
+"""Interactive command helpers for planning a turn.
+
+This module mirrors the upstream ``control_panel.py`` from the Survival Truck
+project.  It defines the ``ControlPanel`` dataclass used to stage commands
+for the turn engine and a ``ControlPanelWidget`` for the Textual UI.  The
+code here was copied from the main repository so that the local UI can
+import the control panel without relying on external files.  Only minor
+formatting adjustments have been made; no functional changes are present.
+"""
 
 from __future__ import annotations
 

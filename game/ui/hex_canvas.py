@@ -175,6 +175,8 @@ class HexCanvas(Widget):
         Binding("ctrl+shift+o", "offset_cycle", "Cycle offset"),
         Binding("ctrl+s", "save_layout", "Save layout"),
         Binding("ctrl+r", "reload_layout", "Reload layout"),
+        # New binding to reset the layout to defaults.
+        Binding("ctrl+shift+r", "reset_layout", "Reset layout"),
     ]
 
     DEFAULT_CSS = """
@@ -228,6 +230,9 @@ class HexCanvas(Widget):
         config_exists = CONFIG_PATH.exists()
         self.cfg = HexLayoutConfig.load()
         if not config_exists and self.cfg is not None:
+            # The very first time we run the app the default layout size
+            # should respect the requested radius.  Subsequent runs will
+            # use the saved height from disk.
             self.cfg.hex_height = self._initial_hex_height
         self._rebuild_layout()
         self._rebuild_centres()
@@ -379,9 +384,17 @@ class HexCanvas(Widget):
             message = self.LayoutConfigChanged(cfg)
         self.post_message(message)
 
+    # Configuration adjustment actions.  Each method updates the model,
+    # rebuilds the layout, recomputes centres, refreshes the widget and
+    # emits a change message.  They also mark the configuration as dirty so
+    # the UI can display an unsaved indicator.
+
     def action_flatten_increase(self) -> None:
         cfg = self._ensure_config()
-        cfg.flatten = min(1.20, round(cfg.flatten + 0.01, 3))
+        # Increase flatten up to 1.10.  Higher values elongate the hex vertically,
+        # which is seldom desirable.  Each keypress adds 0.01.
+        cfg.flatten = min(1.10, round(cfg.flatten + 0.01, 3))
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -389,7 +402,11 @@ class HexCanvas(Widget):
 
     def action_flatten_decrease(self) -> None:
         cfg = self._ensure_config()
-        cfg.flatten = max(0.70, round(cfg.flatten - 0.01, 3))
+        # Decrease flatten down to 0.30.  Lower values further compress the
+        # vertical dimension and may distort the hex.  Each keypress
+        # subtracts 0.01.
+        cfg.flatten = max(0.30, round(cfg.flatten - 0.01, 3))
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -398,6 +415,7 @@ class HexCanvas(Widget):
     def action_height_increase(self) -> None:
         cfg = self._ensure_config()
         cfg.hex_height = min(256.0, cfg.hex_height + 1.0)
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -406,6 +424,7 @@ class HexCanvas(Widget):
     def action_height_decrease(self) -> None:
         cfg = self._ensure_config()
         cfg.hex_height = max(8.0, cfg.hex_height - 1.0)
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -414,6 +433,7 @@ class HexCanvas(Widget):
     def action_origin_left(self) -> None:
         cfg = self._ensure_config()
         cfg.origin_x -= 4.0
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -422,6 +442,7 @@ class HexCanvas(Widget):
     def action_origin_right(self) -> None:
         cfg = self._ensure_config()
         cfg.origin_x += 4.0
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -430,6 +451,7 @@ class HexCanvas(Widget):
     def action_origin_up(self) -> None:
         cfg = self._ensure_config()
         cfg.origin_y -= 4.0
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -438,6 +460,7 @@ class HexCanvas(Widget):
     def action_origin_down(self) -> None:
         cfg = self._ensure_config()
         cfg.origin_y += 4.0
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -446,6 +469,7 @@ class HexCanvas(Widget):
     def action_orientation_toggle(self) -> None:
         cfg = self._ensure_config()
         cfg.orientation = "flat" if cfg.orientation == "pointy" else "pointy"
+        cfg.dirty = True
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -458,17 +482,54 @@ class HexCanvas(Widget):
         except ValueError:
             index = 0
         cfg.offset_mode = self.OFFSET_SEQUENCE[(index + 1) % len(self.OFFSET_SEQUENCE)]
+        cfg.dirty = True
         self._rebuild_centres()
         self.refresh()
         self._emit_config_changed()
 
     def action_save_layout(self) -> None:
+        """Persist the current layout configuration.
+
+        Attempts to write the configuration to disk using the config store.  If
+        the save operation is successful the ``dirty`` flag will be reset and
+        a ``LayoutConfigSaved`` message will be posted.  If an exception is
+        raised during the save attempt a ``LayoutConfigSaveFailed`` message
+        will be posted carrying the original error.  Regardless of outcome the
+        layout change will be emitted so the UI can update its indicators.
+        """
         cfg = self._ensure_config()
-        cfg.save()
-        self._emit_config_changed(saved=True)
+        try:
+            cfg.save()
+            # Saving will clear the dirty flag.  Emit a saved message so the
+            # dashboard knows to clear the unsaved indicator.
+            self._emit_config_changed(saved=True)
+        except Exception as error:
+            # On failure, do not clear the dirty flag and notify observers.
+            self.post_message(self.LayoutConfigSaveFailed(cfg, error))
+            # Still emit change notification so the UI reflects the attempted save.
+            self._emit_config_changed()
 
     def action_reload_layout(self) -> None:
         self.cfg = HexLayoutConfig.load()
+        self._rebuild_layout()
+        self._rebuild_centres()
+        self.refresh()
+        self._emit_config_changed()
+
+    def action_reset_layout(self) -> None:
+        """Reset the layout to its default values.
+
+        This action discards any current settings and reinitialises the
+        configuration with the class defaults.  The height is scaled to
+        match the original radius passed to the constructor.  After
+        resetting the configuration is marked dirty so the UI indicates
+        that changes should be saved.
+        """
+        cfg = HexLayoutConfig()
+        # Respect the initial radius (stored as diameter) for height
+        cfg.hex_height = self._initial_hex_height
+        cfg.dirty = True
+        self.cfg = cfg
         self._rebuild_layout()
         self._rebuild_centres()
         self.refresh()
@@ -540,3 +601,15 @@ class HexCanvas(Widget):
     class LayoutConfigSaved(LayoutConfigChanged):
         """Raised when the hex layout configuration has been persisted."""
 
+    class LayoutConfigSaveFailed(Message):
+        """Raised when persisting the hex layout configuration fails.
+
+        Attributes:
+            config: The configuration that failed to save.
+            error: The exception raised during persistence.
+        """
+
+        def __init__(self, config: HexLayoutConfig, error: Exception) -> None:
+            super().__init__()
+            self.config = config
+            self.error = error

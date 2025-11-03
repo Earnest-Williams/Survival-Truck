@@ -25,11 +25,23 @@ def _placeholder_panel(title: str, message: str, *, border_style: str = "blue") 
     return Panel(message, title=title, border_style=border_style)
 
 
-def _build_layout_panel(config: Mapping[str, str]) -> RenderableType:
+def _build_layout_panel(config: Mapping[str, str], *, unsaved: bool = False) -> RenderableType:
+    """Build the panel summarising the current hex layout configuration.
+
+    Args:
+        config: Mapping of configuration keys to human‑readable strings.
+        unsaved: If ``True``, an asterisk is appended to the panel title to
+            indicate that the current settings differ from the on‑disk
+            configuration.
+
+    Returns:
+        RenderableType: A Panel containing the configuration summary.
+    """
     table = Table.grid(padding=(0, 1), expand=True)
     for key, value in config.items():
         table.add_row(f"[bold]{key}[/bold]", str(value))
-    return Panel(table, title="Hex Layout", border_style="cyan")
+    title = "Hex Layout*" if unsaved else "Hex Layout"
+    return Panel(table, title=title, border_style="cyan")
 
 
 class DashboardView(Widget):
@@ -52,11 +64,29 @@ class DashboardView(Widget):
         self.notification_channel = notification_channel or NotificationChannel()
         self._stats: dict[str, str] = {str(key): str(value) for key, value in (stats or {}).items()}
         self._layout_config: dict[str, str] | None = None
+        # Track whether the layout has unsaved changes to toggle the star.
+        self._layout_config_dirty: bool = False
+        # Optional site context information displayed when a site is selected.
+        self._site_context: list[str] = []
 
     def update_stats(self, stats: Mapping[str, str]) -> None:
         self._stats = {str(key): str(value) for key, value in stats.items()}
         if self._focus_detail:
             self._stats["Focus"] = self._focus_detail
+        self.refresh()
+
+    def update_site_context(self, lines: list[str]) -> None:
+        """Update the additional context shown when a map site is selected.
+
+        The provided ``lines`` will be displayed in a small panel beneath
+        the statistics.  Passing an empty list clears the context panel.
+
+        Args:
+            lines: A list of strings describing events, missions or
+                negotiations related to the selected site.
+        """
+        # Store a shallow copy to avoid external mutation.
+        self._site_context = list(lines) if lines else []
         self.refresh()
 
     def set_focus_detail(self, detail: str | None) -> None:
@@ -67,8 +97,16 @@ class DashboardView(Widget):
             del self._stats["Focus"]
         self.refresh()
 
-    def update_layout_config(self, config: Mapping[str, str]) -> None:
+    def update_layout_config(self, config: Mapping[str, str], *, unsaved: bool = False) -> None:
+        """Update the displayed layout configuration summary.
+
+        Args:
+            config: Mapping of configuration fields to their current values.
+            unsaved: When ``True`` a star will be appended to the panel title
+                to indicate there are unsaved changes.
+        """
         self._layout_config = {str(key): str(value) for key, value in config.items()}
+        self._layout_config_dirty = bool(unsaved)
         self.refresh()
 
     def action_clear_notifications(self) -> None:
@@ -87,9 +125,26 @@ class DashboardView(Widget):
         layout_sections = [Layout(stats_panel, name="stats", ratio=2)]
         if self._layout_config:
             layout_sections.append(
-                Layout(_build_layout_panel(self._layout_config), name="layout", ratio=1)
+                Layout(
+                    _build_layout_panel(self._layout_config, unsaved=self._layout_config_dirty),
+                    name="layout",
+                    ratio=1,
+                )
             )
         layout_sections.append(Layout(notifications, name="notifications", ratio=1))
+        # Insert a site context panel if any context lines are provided.
+        if self._site_context:
+            from rich.text import Text
+            context_body = Text()
+            for line in self._site_context:
+                context_body.append(line + "\n")
+            layout_sections.append(
+                Layout(
+                    Panel(context_body, title="Site Context", border_style="magenta"),
+                    name="site_context",
+                    ratio=1,
+                )
+            )
         layout.split_column(*layout_sections)
         return layout
 

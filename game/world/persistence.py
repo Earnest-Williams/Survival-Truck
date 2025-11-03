@@ -1,375 +1,198 @@
-"""Persistence helpers for world map chunks, site state, and save slots."""
+"""Persistence helpers for Survival Truck.
+
+This module provides functions to save and load the game's simulation
+state in a consolidated fashion.  Unlike the upstream project, which
+stores daily diffs and seasonal snapshots separately, these helpers
+persist all relevant data—dynamic world state entries (events,
+missions, negotiations), and faction‑specific data (ideology weights,
+behavioural traits, reputation)—into a single JSON file per save slot.
+
+On save, a JSON‑serialisable structure is constructed containing the
+current ``world_state`` and a mapping of faction names to their
+ideology weight distributions, trait values and reputation.  On
+load, the structure is read back and returned to the caller for
+merging into the active simulation.
+
+The save files are stored in a platform‑appropriate user data
+directory using ``platformdirs.user_data_dir``.  Each slot has its
+own file named ``<slot>_save.json``.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import (
-    Any,
-    TypeVar,
-    cast,
-)
+import json
+import os
+from typing import Any, Dict, Mapping, Tuple
 
-import msgpack
-from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, Integer, LargeBinary, String, UniqueConstraint
-from sqlalchemy.engine import Engine
-from sqlmodel import Field, Session, SQLModel, create_engine, select
-
-from .config import WorldConfig
-from .map import MapChunk
-from .save_models import (
-    ChunkSnapshot,
-    SiteSnapshot,
-    WorldSnapshot,
-    WorldSnapshotMetadata,
-)
-from .sites import Site
-
-__all__ = [
-    "WorldConfigRecord",
-    "WorldDailyDiffRecord",
-    "WorldSeasonSnapshotRecord",
-    "SeasonSnapshotEntry",
-    "create_world_engine",
-    "init_world_storage",
-    "load_daily_diff",
-    "load_season_snapshot",
-    "load_world_config",
-    "serialize_chunk",
-    "serialize_chunks",
-    "serialize_site",
-    "serialize_sites",
-    "store_daily_diff",
-    "store_season_snapshot",
-    "store_world_config",
-    "deserialize_chunk",
-    "deserialize_chunks",
-    "deserialize_site",
-    "deserialize_sites",
-    "iter_daily_diffs",
-    "iter_season_snapshots",
-]
-
-_M = TypeVar("_M", bound=BaseModel)
+try:
+    # ``platformdirs`` is an optional dependency, but recommended for
+    # locating OS‑specific user data directories.  If not available,
+    # fall back to the current working directory.
+    from platformdirs import user_data_dir
+except Exception:
+    user_data_dir = None  # type: ignore[assignment]
 
 
-def _now() -> datetime:
-    return datetime.now(UTC)
+def _get_save_dir(app_name: str = "survival_truck") -> str:
+    """Return the directory used to store save files.
 
+    The directory is created if it does not already exist.  If
+    ``platformdirs`` is available, a per‑user data directory is used;
+    otherwise, the current working directory is returned.
 
-def _pack_model(model: BaseModel) -> bytes:
-    payload = model.model_dump(mode="json")
-    return cast(bytes, msgpack.packb(payload, use_bin_type=True))
+    Args:
+        app_name: The name of the application, used when deriving the
+            directory via ``platformdirs``.
 
-
-def _unpack_model(payload: bytes, model_type: type[_M]) -> _M:  # noqa: UP047
-    data = msgpack.unpackb(payload, raw=False)
-    return model_type.model_validate(data)
-
-
-class WorldConfigRecord(SQLModel, table=True):
-    """SQLModel table storing configuration payloads."""
-
-    __tablename__ = "world_configs"
-
-    id: int | None = Field(default=None, primary_key=True)
-    slot: str = Field(sa_column=Column(String(128), unique=True, index=True, nullable=False))
-    payload: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
-    created_at: datetime = Field(
-        default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False)
-    )
-    updated_at: datetime = Field(
-        default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False)
-    )
-
-
-class WorldDailyDiffRecord(SQLModel, table=True):
-    """SQLModel table storing daily snapshot blobs."""
-
-    __tablename__ = "world_daily_diffs"
-    __table_args__ = (UniqueConstraint("slot", "day", name="uq_world_daily_slot_day"),)
-
-    id: int | None = Field(default=None, primary_key=True)
-    slot: str = Field(sa_column=Column(String(128), index=True, nullable=False))
-    day: int = Field(sa_column=Column(Integer, nullable=False))
-    metadata_blob: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
-    snapshot_blob: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
-    created_at: datetime = Field(
-        default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False)
-    )
-    updated_at: datetime = Field(
-        default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False)
-    )
-
-
-class WorldSeasonSnapshotRecord(SQLModel, table=True):
-    """SQLModel table storing seasonal full snapshot blobs."""
-
-    __tablename__ = "world_season_snapshots"
-    __table_args__ = (UniqueConstraint("slot", "day", name="uq_world_season_slot_day"),)
-
-    id: int | None = Field(default=None, primary_key=True)
-    slot: str = Field(sa_column=Column(String(128), index=True, nullable=False))
-    day: int = Field(sa_column=Column(Integer, nullable=False))
-    season: str | None = Field(sa_column=Column(String(64), nullable=True))
-    metadata_blob: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
-    snapshot_blob: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
-    created_at: datetime = Field(
-        default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False)
-    )
-    updated_at: datetime = Field(
-        default_factory=_now, sa_column=Column(DateTime(timezone=True), nullable=False)
-    )
-
-
-@dataclass(frozen=True)
-class SeasonSnapshotEntry:
-    """Loaded seasonal snapshot tuple."""
-
-    season: str | None
-    metadata: WorldSnapshotMetadata
-    snapshot: WorldSnapshot
-
-
-def create_world_engine(path: str | Path, *, echo: bool = False) -> Engine:
-    """Return a SQLite engine for the provided ``path``."""
-
-    if isinstance(path, str) and path == ":memory:":
-        url = "sqlite:///:memory:"
+    Returns:
+        A filesystem path string.
+    """
+    if user_data_dir is not None:
+        path = user_data_dir(app_name, appauthor=False)
     else:
-        database_path = Path(path)
-        database_path.parent.mkdir(parents=True, exist_ok=True)
-        url = f"sqlite:///{database_path.as_posix()}"
-    return create_engine(url, echo=echo, connect_args={"check_same_thread": False})
+        path = os.getcwd()
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
-def init_world_storage(engine: Engine) -> None:
-    """Ensure all persistence tables exist for ``engine``."""
+def _json_safe(obj: Any) -> Any:
+    """Convert arbitrary Python objects into JSON‑serialisable values.
 
-    SQLModel.metadata.create_all(engine)
+    Primitive types (None, bool, int, float, str) are returned as
+    is.  Mappings and sequences are processed recursively.  All
+    other objects are converted to their string representation.
 
+    Args:
+        obj: An arbitrary Python object.
 
-def store_world_config(engine: Engine, slot: str, config: WorldConfig) -> None:
-    """Persist ``config`` under ``slot``."""
-
-    payload = _pack_model(config)
-    now = _now()
-    with Session(engine) as session:
-        record = session.exec(
-            select(WorldConfigRecord).where(WorldConfigRecord.slot == slot)
-        ).first()
-        if record is None:
-            record = WorldConfigRecord(slot=slot, payload=payload, created_at=now, updated_at=now)
-            session.add(record)
-        else:
-            record.payload = payload
-            record.updated_at = now
-        session.commit()
-
-
-def load_world_config(engine: Engine, slot: str) -> WorldConfig | None:
-    """Return the stored :class:`WorldConfig` for ``slot`` if present."""
-
-    with Session(engine) as session:
-        record = session.exec(
-            select(WorldConfigRecord).where(WorldConfigRecord.slot == slot)
-        ).first()
-        if record is None:
-            return None
-        return _unpack_model(record.payload, WorldConfig)
+    Returns:
+        A JSON‑serialisable representation of ``obj``.
+    """
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, Mapping):
+        return {str(k): _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_json_safe(item) for item in obj]
+    # Fallback: convert to string
+    return str(obj)
 
 
-def store_daily_diff(
-    engine: Engine,
-    slot: str,
-    snapshot: WorldSnapshot,
+def save_game_state(
+    world_state: Mapping[str, Any],
+    faction_controller: Any,
     *,
-    metadata: WorldSnapshotMetadata | None = None,
-) -> WorldSnapshotMetadata:
-    """Persist ``snapshot`` as the diff for ``slot`` and ``snapshot.day``."""
+    slot: str = "default",
+    app_name: str = "survival_truck",
+) -> None:
+    """Persist the current game state to a JSON file.
 
-    meta = metadata or snapshot.metadata()
-    snapshot_blob = _pack_model(snapshot)
-    metadata_blob = _pack_model(meta)
-    now = _now()
-    with Session(engine) as session:
-        statement = select(WorldDailyDiffRecord).where(
-            (WorldDailyDiffRecord.slot == slot) & (WorldDailyDiffRecord.day == snapshot.day)
-        )
-        record = session.exec(statement).first()
-        if record is None:
-            record = WorldDailyDiffRecord(
-                slot=slot,
-                day=snapshot.day,
-                metadata_blob=metadata_blob,
-                snapshot_blob=snapshot_blob,
-                created_at=now,
-                updated_at=now,
-            )
-            session.add(record)
-        else:
-            record.metadata_blob = metadata_blob
-            record.snapshot_blob = snapshot_blob
-            record.updated_at = now
-        session.commit()
-    return meta
+    The ``world_state`` is filtered through ``_json_safe`` to ensure
+    that all values are JSON‑serialisable.  Faction data is collected
+    from the provided ``faction_controller`` via its ledger, including
+    ideology weights, behavioural traits and reputation for each
+    faction.  The resulting structure is written to a file named
+    ``<slot>_save.json`` in the user data directory.
 
-
-def store_season_snapshot(
-    engine: Engine,
-    slot: str,
-    snapshot: WorldSnapshot,
-    *,
-    season: str | None = None,
-    metadata: WorldSnapshotMetadata | None = None,
-) -> WorldSnapshotMetadata:
-    """Persist ``snapshot`` as the seasonal baseline for ``slot`` at ``snapshot.day``."""
-
-    summary: str | None = None
-    if metadata is None and season:
-        summary = f"Day {snapshot.day}: {season.title()} season snapshot"
-    meta = metadata or snapshot.metadata(summary=summary)
-    snapshot_blob = _pack_model(snapshot)
-    metadata_blob = _pack_model(meta)
-    now = _now()
-    with Session(engine) as session:
-        statement = select(WorldSeasonSnapshotRecord).where(
-            (WorldSeasonSnapshotRecord.slot == slot)
-            & (WorldSeasonSnapshotRecord.day == snapshot.day)
-        )
-        record = session.exec(statement).first()
-        if record is None:
-            record = WorldSeasonSnapshotRecord(
-                slot=slot,
-                day=snapshot.day,
-                season=season,
-                metadata_blob=metadata_blob,
-                snapshot_blob=snapshot_blob,
-                created_at=now,
-                updated_at=now,
-            )
-            session.add(record)
-        else:
-            record.season = season
-            record.metadata_blob = metadata_blob
-            record.snapshot_blob = snapshot_blob
-            record.updated_at = now
-        session.commit()
-    return meta
-
-
-def load_daily_diff(
-    engine: Engine, slot: str, day: int
-) -> tuple[WorldSnapshotMetadata, WorldSnapshot] | None:
-    """Load the snapshot and metadata for ``slot`` on ``day`` if present."""
-
-    statement = select(WorldDailyDiffRecord).where(
-        (WorldDailyDiffRecord.slot == slot) & (WorldDailyDiffRecord.day == day)
-    )
-    with Session(engine) as session:
-        record = session.exec(statement).first()
-        if record is None:
-            return None
-        metadata = _unpack_model(record.metadata_blob, WorldSnapshotMetadata)
-        snapshot = _unpack_model(record.snapshot_blob, WorldSnapshot)
-        return metadata, snapshot
+    Args:
+        world_state: The global state dictionary shared across game
+            systems.
+        faction_controller: The FactionAIController instance whose
+            ledger stores faction information.  It must expose
+            ``factions`` (mapping) and ``ledger`` (FactionLedger).
+        slot: An identifier for the save slot (default "default").
+        app_name: The application name used to compute the save
+            directory.  Defaults to "survival_truck".
+    """
+    try:
+        save_dir = _get_save_dir(app_name)
+        filepath = os.path.join(save_dir, f"{slot}_save.json")
+        # Assemble faction data
+        factions_data: Dict[str, Dict[str, Any]] = {}
+        if hasattr(faction_controller, "factions") and hasattr(faction_controller, "ledger"):
+            ledger = getattr(faction_controller, "ledger")
+            factions_map = getattr(faction_controller, "factions")
+            try:
+                trait_names = list(getattr(ledger, "DEFAULT_TRAITS", []))
+            except Exception:
+                trait_names = []
+            for name, rec in factions_map.items():
+                # Ideology weights
+                try:
+                    ide_weights = ledger.ideology_weights(name)
+                except Exception:
+                    ide_weights = {}
+                # Traits
+                traits: Dict[str, float] = {}
+                for t_name in trait_names:
+                    try:
+                        traits[t_name] = float(ledger.get_trait(name, t_name, 0.0))
+                    except Exception:
+                        traits[t_name] = 0.0
+                # Reputation (may be stored on FactionRecord)
+                try:
+                    rep = float(getattr(rec, "reputation", 0.0))
+                except Exception:
+                    rep = 0.0
+                factions_data[name] = {
+                    "ideology_weights": ide_weights,
+                    "traits": traits,
+                    "reputation": rep,
+                }
+        # Filter world_state to JSON‑safe content
+        safe_state = {}
+        for key, val in world_state.items():
+            # Skip objects known to be non‑serialisable (e.g. randomness
+            # generators).  We persist only those keys relevant to
+            # simulation continuity.
+            if key in {"randomness", "rng", "_rng"}:
+                continue
+            safe_state[key] = _json_safe(val)
+        data = {
+            "world_state": safe_state,
+            "factions": factions_data,
+        }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        # Fail silently: persistence is best effort.  Errors can be
+        # surfaced via the caller's notification channel if desired.
+        return
 
 
-def load_season_snapshot(engine: Engine, slot: str, day: int) -> SeasonSnapshotEntry | None:
-    """Load the seasonal snapshot for ``slot`` on ``day`` if present."""
+def load_game_state(
+    *, slot: str = "default", app_name: str = "survival_truck"
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Load a previously saved game state.
 
-    statement = select(WorldSeasonSnapshotRecord).where(
-        (WorldSeasonSnapshotRecord.slot == slot) & (WorldSeasonSnapshotRecord.day == day)
-    )
-    with Session(engine) as session:
-        record = session.exec(statement).first()
-        if record is None:
-            return None
-        metadata = _unpack_model(record.metadata_blob, WorldSnapshotMetadata)
-        snapshot = _unpack_model(record.snapshot_blob, WorldSnapshot)
-        return SeasonSnapshotEntry(record.season, metadata, snapshot)
+    This function attempts to read ``<slot>_save.json`` from the user
+    data directory and return the stored ``world_state`` and
+    ``factions`` structures.  If the file is missing or cannot be
+    parsed, empty structures are returned.
 
+    Args:
+        slot: Identifier for the save slot.
+        app_name: Application name used to compute the save directory.
 
-def iter_daily_diffs(
-    engine: Engine, slot: str
-) -> Iterator[tuple[WorldSnapshotMetadata, WorldSnapshot]]:
-    """Iterate over stored diffs ordered by day for ``slot``."""
-
-    statement = (
-        select(WorldDailyDiffRecord)
-        .where(WorldDailyDiffRecord.slot == slot)
-        .order_by(cast(Any, WorldDailyDiffRecord.day))
-    )
-    with Session(engine) as session:
-        for record in session.exec(statement):
-            metadata = _unpack_model(record.metadata_blob, WorldSnapshotMetadata)
-            snapshot = _unpack_model(record.snapshot_blob, WorldSnapshot)
-            yield metadata, snapshot
-
-
-def iter_season_snapshots(engine: Engine, slot: str) -> Iterator[SeasonSnapshotEntry]:
-    """Iterate over stored seasonal snapshots ordered by day for ``slot``."""
-
-    statement = (
-        select(WorldSeasonSnapshotRecord)
-        .where(WorldSeasonSnapshotRecord.slot == slot)
-        .order_by(cast(Any, WorldSeasonSnapshotRecord.day))
-    )
-    with Session(engine) as session:
-        for record in session.exec(statement):
-            metadata = _unpack_model(record.metadata_blob, WorldSnapshotMetadata)
-            snapshot = _unpack_model(record.snapshot_blob, WorldSnapshot)
-            yield SeasonSnapshotEntry(record.season, metadata, snapshot)
-
-
-def serialize_chunk(chunk: MapChunk) -> dict[str, object]:
-    """Serialize a :class:`MapChunk` into a JSON-friendly mapping."""
-
-    return ChunkSnapshot.from_chunk(chunk).model_dump(mode="json")
-
-
-def deserialize_chunk(payload: Mapping[str, object]) -> MapChunk:
-    """Reconstruct a :class:`MapChunk` from ``payload``."""
-
-    snapshot = ChunkSnapshot.model_validate(payload)
-    return snapshot.to_chunk()
-
-
-def serialize_chunks(chunks: Iterable[MapChunk]) -> list[dict[str, object]]:
-    """Serialize ``chunks`` into a list of mappings."""
-
-    return [serialize_chunk(chunk) for chunk in chunks]
-
-
-def deserialize_chunks(payload: Sequence[Mapping[str, object]]) -> list[MapChunk]:
-    """Deserialize a sequence of chunk payloads back into :class:`MapChunk` objects."""
-
-    return [deserialize_chunk(item) for item in payload]
-
-
-def serialize_site(site: Site) -> dict[str, object]:
-    """Serialize a :class:`Site` into a JSON-friendly mapping."""
-
-    return SiteSnapshot.from_site(site).model_dump(mode="json")
-
-
-def deserialize_site(payload: Mapping[str, object]) -> Site:
-    """Reconstruct a :class:`Site` from ``payload``."""
-
-    snapshot = SiteSnapshot.model_validate(payload)
-    return snapshot.to_site()
-
-
-def serialize_sites(sites: Iterable[Site]) -> list[dict[str, object]]:
-    """Serialize a collection of :class:`Site` objects."""
-
-    return [serialize_site(site) for site in sites]
-
-
-def deserialize_sites(payload: Sequence[Mapping[str, object]]) -> list[Site]:
-    """Deserialize serialized site payloads."""
-
-    return [deserialize_site(item) for item in payload]
+    Returns:
+        A tuple ``(world_state, factions)``.  Each entry is a
+        dictionary.  Callers should merge ``world_state`` into their
+        active state and use the ``factions`` mapping to restore
+        ideology weights, traits and reputation on the ledger.
+    """
+    try:
+        save_dir = _get_save_dir(app_name)
+        filepath = os.path.join(save_dir, f"{slot}_save.json")
+        if not os.path.exists(filepath):
+            return {}, {}
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        world_state = data.get("world_state", {})
+        factions = data.get("factions", {})
+        if not isinstance(world_state, dict):
+            world_state = {}
+        if not isinstance(factions, dict):
+            factions = {}
+        return world_state, factions
+    except Exception:
+        return {}, {}

@@ -1,4 +1,13 @@
-"""Faction AI operating on DataFrame-backed state."""
+"""Faction AI operating on DataFrame-backed state.
+
+This local copy mirrors the upstream AI controller while adding hooks for
+generating faction missions. Missions are requests issued by non-player
+factions that the player can choose to complete for reputation or
+resource rewards. They are stored in the world state under the
+``"missions"`` key as simple dictionaries.  The mission generation is
+seeded from the world randomness generator so that missions are
+deterministic relative to the world seed.
+"""
 
 from __future__ import annotations
 
@@ -30,7 +39,9 @@ class SitePositionRecord(TypedDict, total=False):
     r: int | str
 
 
-type CoordLike = HexCoord | Mapping[str, int | str] | Sequence[int | str] | str
+# NOTE: Python <3.12 does not support the ``type`` alias syntax. Replace it
+# with a standard assignment for forward compatibility.
+CoordLike = HexCoord | Mapping[str, int | str] | Sequence[int | str] | str
 SiteCollectionInput = Mapping[str, Site] | Iterable[Site]
 SitePositionPayload = Mapping[str, CoordLike]
 SiteConnectionsPayload = Mapping[str, Sequence[str | int]]
@@ -38,7 +49,14 @@ TerrainCostPayload = Mapping[Hashable, float | int | str]
 
 
 class FactionAIController:
-    """Coordinates AI decision making for NPC factions."""
+    """Coordinates AI decision making for NPC factions.
+
+    In addition to the original patrol/trade/raid cycle, this
+    implementation periodically generates missions for the player. The
+    probability of issuing a mission is intentionally low to avoid
+    overwhelming the player. Missions are deterministic given the
+    world's seed and day number.
+    """
 
     def __init__(
         self,
@@ -54,9 +72,16 @@ class FactionAIController:
         self._movement_graph: nx.Graph | None = movement_graph
         self._diplomacy_graph: nx.Graph | None = None
         if randomness is not None:
+            # Use a dedicated generator for AI and missions to ensure
+            # reproducible sequences across runs.
             self.rng = randomness.generator("faction-ai")
+            self._mission_rng = randomness.generator("faction-missions")
         else:
-            self.rng = rng or default_rng()
+            base_rng = rng or default_rng()
+            self.rng = base_rng
+            # Use a separate generator for mission generation when no
+            # world randomness is provided.
+            self._mission_rng = base_rng
         self._current_sites: dict[str, Site] = {}
         self._pending_movements: dict[str, list[CaravanRecord]] = {}
         self._state_path: list[str] = []
@@ -175,6 +200,64 @@ class FactionAIController:
         self.engage_raid()
         self.stabilize_consolidate()
         self.refresh_alliance()
+
+        # After completing all state transitions, give factions an opportunity
+        # to issue missions to the player. Missions are stored in the
+        # provided world_state under the key "missions". The day number
+        # ensures that mission expiry times are meaningful relative to game
+        # progression.
+        try:
+            self._generate_missions(world_state, day)
+        except Exception:
+            # Swallow mission generation errors; AI behaviour should
+            # continue even if mission generation fails.
+            pass
+
+        # Also generate diplomatic negotiations (truces, tribute, aid) based on
+        # the player's standing and reputation. These negotiations are stored
+        # under the "negotiations" key in the world state. The format of
+        # negotiations is similar to missions: a list of mapping objects
+        # describing each proposal. No effects are applied automatically; it
+        # is up to the game UI to present the negotiation and update the
+        # standing/reputation based on the player's choice.
+        try:
+            self._generate_negotiations(world_state, day)
+        except Exception:
+            pass
+
+        # Apply ideological drift to faction standings. Factions with
+        # differing ideologies gradually become more hostile, while those
+        # sharing an ideology grow slightly friendlier. This is a small
+        # incremental adjustment to the standing matrix and is intended to
+        # operate alongside the daily decay. The magnitude is small to
+        # prevent sudden swings.
+        try:
+            self._apply_ideological_drift()
+        except Exception:
+            pass
+
+        # After drift, allow factions to shift their ideology based on
+        # strong positive relations.  This influence step examines
+        # standings between factions and may cause one faction to adopt
+        # another's ideology if the accumulated goodwill is sufficiently
+        # high.  We wrap this in a try/except to prevent failures from
+        # disrupting the AI loop.
+        try:
+            self._apply_ideological_influence()
+        except Exception:
+            pass
+
+        # After adjusting ideology drift, check whether any factions are
+        # experiencing severe stress (e.g. depleted wealth and significant
+        # losses). Such stress can cause a faction to fragment into a
+        # splinter group with the same ideology. Splinter factions inherit
+        # half of the parent's resources and preferences. We perform this
+        # check once per turn so splits do not occur repeatedly in a single
+        # day.
+        try:
+            self._check_for_schisms(day=day)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     def _record_state(self, state: str) -> None:
@@ -389,7 +472,56 @@ class FactionAIController:
             viable_targets = list(faction.known_sites)
         if not viable_targets:
             return
-        destination = self.rng.choice(viable_targets)
+        # Ideological preference: select sites whose type matches the
+        # faction's ideology. If there are any preferred targets, choose
+        # among them; otherwise fall back to any viable target. This
+        # encourages caravans to visit sites aligned with their faction's
+        # worldview (e.g. militaristic factions favour military ruins).
+        preferred_targets: list[str] = []
+        try:
+            ideology = getattr(faction, "ideology", "neutral")
+            # Map ideology to preferred site types
+            if ideology == "militaristic":
+                pref_types = {"military_ruins", "outpost", "power_plant"}
+            elif ideology == "technocratic":
+                pref_types = {"power_plant", "city", "outpost"}
+            elif ideology == "tribalist":
+                pref_types = {"farm", "camp", "outpost"}
+            elif ideology == "mercantile":
+                # Merchants gravitate toward markets and trade hubs
+                pref_types = {"city", "outpost", "camp"}
+            elif ideology == "religious":
+                # Religious factions favour rural and camp-like sites
+                pref_types = {"camp", "farm", "outpost"}
+            elif ideology == "scientific":
+                # Scientific factions head to ruins and research facilities
+                pref_types = {"military_ruins", "power_plant", "city"}
+            elif ideology == "nomadic":
+                # Nomadic factions prefer mobility hubs and open camps
+                pref_types = {"camp", "outpost", "farm"}
+            else:
+                pref_types = set()
+            for site_id in viable_targets:
+                site = sites.get(site_id)
+                # Some Site objects expose their type as ``site.site_type``
+                # (enum) or ``site.site_type.value``. We attempt both.
+                stype: str | None = None
+                if site is not None:
+                    try:
+                        stype = getattr(site, "site_type", None)
+                        # If site_type is an Enum, take its value
+                        if hasattr(stype, "value"):
+                            stype_val = str(getattr(stype, "value"))
+                        else:
+                            stype_val = str(stype) if stype is not None else None
+                    except Exception:
+                        stype_val = None
+                    if stype_val and stype_val in pref_types:
+                        preferred_targets.append(site_id)
+        except Exception:
+            preferred_targets = []
+        target_pool = preferred_targets if preferred_targets else viable_targets
+        destination = self.rng.choice(target_pool)
         route = self._compute_route(caravan.location, destination)
         caravan.plan_route(route)
         if len(route) > 1:
@@ -541,6 +673,559 @@ class FactionAIController:
         data = self._movement_graph.get_edge_data(origin, destination) or {}
         weight = float(data.get("weight", 0.0))
         return max(0, math.ceil(weight) - 1)
+
+    # ------------------------------------------------------------------
+    def _generate_missions(self, world_state: Mapping[str, object], day: int) -> None:
+        """Randomly generate missions for the player.
+
+        For each faction there is a small chance per day (currently 5%) of
+        creating a mission. The mission expiry is relative to the day
+        number so that older missions naturally expire. Missions are
+        deterministic for a given world seed because they draw from a
+        dedicated random generator seeded from :class:`WorldRandomness`.
+
+        The ``world_state`` dictionary will be updated in place. A list of
+        missions is stored under the ``"missions"`` key, which the game
+        layer can consume to present to the player. Each mission is a
+        simple mapping containing at minimum: ``faction`` (the issuing
+        faction), ``type`` (mission kind), ``description``, ``reward`` (an
+        abstract numeric value), and ``expires`` (absolute day when the
+        mission is no longer available).
+        """
+        # Ensure world_state is mutable
+        if not isinstance(world_state, Mapping):
+            return
+        mission_list = list(world_state.get("missions", []))
+        for faction in self.ledger.iterate_factions():
+            # Skip unnamed factions
+            if not faction.name:
+                continue
+            # 5% chance per day to issue a mission
+            if float(self._mission_rng.random()) < 0.05:
+                # For now we only implement a single escort mission type
+                mission = {
+                    "faction": faction.name,
+                    "type": "escort_caravan",
+                    "description": f"Escort a {faction.name} caravan safely between sites.",
+                    # Reward is proportional to the faction's wealth preference; default 10
+                    "reward": max(10.0, faction.preference_for("wealth", default=10.0)),
+                    "expires": day + 7,  # expire in a week
+                }
+                mission_list.append(mission)
+        # Deduplicate missions by identity (faction + type + expires)
+        unique: list[dict[str, object]] = []
+        seen: set[tuple[str, str, int]] = set()
+        for mission in mission_list:
+            fac = str(mission.get("faction", ""))
+            typ = str(mission.get("type", ""))
+            exp = int(mission.get("expires", day))
+            key = (fac, typ, exp)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(mission)
+        world_state["missions"] = unique
+
+    def _generate_negotiations(self, world_state: Mapping[str, object], day: int) -> None:
+        """Generate negotiation proposals based on faction sentiment.
+
+        Negotiations are generated using the player's reputation with each
+        faction. Factions with strongly negative reputations may offer
+        truces or demand tribute; those with neutral or positive
+        reputations may request aid or propose coalitions. Each proposal
+        contains a ``type`` ("truce", "tribute", "aid", "coalition"), a
+        description, optional resource demands or rewards, and an expiry
+        day. These proposals are stored in the ``world_state`` under
+        ``"negotiations"``. No effects are applied automatically—game
+        systems must handle the player's choice and update diplomacy
+        accordingly.
+        """
+        if not isinstance(world_state, Mapping):
+            return
+        negotiations = list(world_state.get("negotiations", []))
+        # Collect types of ongoing world events.  These will influence negotiation
+        # frequency and bias. We consider both persistent multi-day events in
+        # ``active_events`` and one-off events generated this turn in ``events``.
+        event_types: set[str] = set()
+        raw_active_events = world_state.get("active_events")
+        if isinstance(raw_active_events, Sequence):
+            for ev in raw_active_events:
+                try:
+                    et = str(ev.get("type", ""))
+                except Exception:
+                    et = ""
+                if et:
+                    event_types.add(et)
+        raw_events_list = world_state.get("events")
+        if isinstance(raw_events_list, Sequence):
+            for ev in raw_events_list:
+                try:
+                    et = str(ev.get("type", ""))
+                except Exception:
+                    et = ""
+                if et:
+                    event_types.add(et)
+
+        # Before looping over factions, extract travel telemetry from the world state.
+        # The travel cost system records the player's most recent movement in
+        # ``world_state['last_travel_cost']``, capturing the load factor
+        # (weight/power scaling) and travel modifier (seasonal * weather).  We
+        # normalise these values to influence negotiation frequency and bias.
+        load_factor: float = 1.0
+        travel_modifier: float = 1.0
+        try:
+            last_travel: Mapping[str, object] | None = world_state.get("last_travel_cost")  # type: ignore[index]
+            if isinstance(last_travel, Mapping):
+                lf = last_travel.get("load_factor")
+                if isinstance(lf, (int, float)):
+                    load_factor = float(lf)
+                tm = last_travel.get("modifier")
+                # Some versions store travel modifier under 'modifier' or 'travel_modifier'
+                if isinstance(tm, (int, float)):
+                    travel_modifier = float(tm)
+                else:
+                    tm2 = last_travel.get("travel_modifier")
+                    if isinstance(tm2, (int, float)):
+                        travel_modifier = float(tm2)
+        except Exception:
+            # Fallback to defaults if keys are missing or malformed
+            load_factor = 1.0
+            travel_modifier = 1.0
+
+        # Compute modifiers from load factor and travel modifier.  We cap
+        # adjustments to avoid extreme behaviours.  A load factor > 1.0
+        # increases the chance of negotiation (heavily laden players draw
+        # attention), whereas a travel modifier > 1.0 (bad weather/season)
+        # nudges factions to negotiate more frequently.  Each contributes
+        # up to +50% to the base chance.
+        load_chance_mod = 0.0
+        if load_factor > 1.0:
+            load_chance_mod = min((load_factor - 1.0) * 0.5, 0.5)
+        travel_chance_mod = 0.0
+        if travel_modifier > 1.0:
+            travel_chance_mod = min((travel_modifier - 1.0) * 0.5, 0.5)
+
+        for faction in self.ledger.iterate_factions():
+            if not faction.name:
+                continue
+            rep = getattr(faction, "reputation", 0.0)
+            # Retrieve the faction's ideology. Ideology influences both the
+            # likelihood and the type of negotiation issued. If none is set,
+            # "neutral" is returned.
+            ideology = getattr(faction, "ideology", "neutral")
+            # Fetch behavioural traits to further modulate negotiation likelihood
+            try:
+                aggressive = self.ledger.get_trait(faction.name, "aggressive", 0.0)
+                cautious = self.ledger.get_trait(faction.name, "cautious", 0.0)
+                greedy = self.ledger.get_trait(faction.name, "greedy", 0.0)
+                benevolent = self.ledger.get_trait(faction.name, "benevolent", 0.0)
+                expansionist = self.ledger.get_trait(faction.name, "expansionist", 0.0)
+            except Exception:
+                aggressive = cautious = greedy = benevolent = expansionist = 0.0
+            # Determine the base chance for a negotiation event. Larger
+            # magnitudes of reputation lead to higher probabilities.
+            if rep <= -20.0:
+                base_chance = 0.10  # very hostile: 10% chance
+            elif rep <= -5.0:
+                base_chance = 0.05  # slightly hostile: 5% chance
+            elif rep >= 20.0:
+                base_chance = 0.08  # very friendly: 8% chance
+            elif rep >= 5.0:
+                base_chance = 0.04  # slightly friendly: 4% chance
+            else:
+                base_chance = 0.02  # neutral: 2% chance
+            # Modify base chance based on ideology. Militaristic factions
+            # are more likely to propose negotiations in general, whereas
+            # technocratic, tribalist, mercantile and religious factions are
+            # slightly more reserved. These modifiers scale the probability.
+            if ideology == "militaristic":
+                base_chance *= 1.5
+            elif ideology == "technocratic":
+                base_chance *= 1.2
+            elif ideology == "tribalist":
+                base_chance *= 1.1
+            elif ideology == "mercantile":
+                base_chance *= 1.3
+            elif ideology == "religious":
+                base_chance *= 1.1
+            elif ideology == "scientific":
+                # Scientists are cautious diplomats
+                base_chance *= 1.15
+            elif ideology == "nomadic":
+                # Nomads are less likely to engage in negotiations
+                base_chance *= 0.9
+
+            # Apply travel telemetry modifiers to the base chance.  Heavy
+            # player loads and harsh travel conditions make factions more
+            # eager to negotiate.  These adjustments are applied once per
+            # faction at the start of processing.
+            base_chance *= 1.0 + load_chance_mod
+            base_chance *= 1.0 + travel_chance_mod
+
+            # Modify base chance based on behavioural traits.  Aggressive and
+            # expansionist factions negotiate more frequently, whereas
+            # cautious factions do so less.  Greedy and benevolent traits
+            # influence the content of proposals rather than frequency.
+            base_chance *= 1.0 + 0.5 * aggressive  # up to +50%
+            base_chance *= 1.0 - 0.5 * cautious    # up to -50%
+            base_chance *= 1.0 + 0.3 * expansionist  # up to +30%
+            # Bump negotiation frequency if there are any world events occurring. A
+            # turbulent world prompts factions to seek more diplomatic solutions. We
+            # increase the base chance by 20% when any events are present. Specific
+            # event types further modify the chance: pandemics add +10%, storms
+            # +5%. These are multiplicative adjustments.
+            if event_types:
+                base_chance *= 1.2
+                if "pandemic" in event_types:
+                    base_chance *= 1.1
+                if "storm" in event_types:
+                    base_chance *= 1.05
+            # Draw random; skip negotiation if not selected.
+            if float(self._mission_rng.random()) >= base_chance:
+                continue
+            # Choose negotiation type based on reputation sign
+            if rep < -5.0:
+                # Negative reputation: primarily truce or tribute demand. Militaristic
+                # factions favour tribute, technocratic factions prefer truce,
+                # tribalist factions split evenly.
+                bias = float(self._mission_rng.random())
+                if ideology == "militaristic":
+                    threshold = 0.7
+                elif ideology == "technocratic":
+                    threshold = 0.3
+                elif ideology == "mercantile":
+                    # Merchants lean slightly towards demanding tribute when relations
+                    # are bad, but not as strongly as militarists
+                    threshold = 0.6
+                elif ideology == "religious":
+                    # Religious factions are more likely to propose truces
+                    threshold = 0.4
+                elif ideology == "scientific":
+                    # Scientific factions prefer truces to preserve resources
+                    threshold = 0.3
+                elif ideology == "nomadic":
+                    # Nomadic factions tend to avoid tribute demands
+                    threshold = 0.5
+                else:
+                    # Tribalists and neutral factions split evenly
+                    threshold = 0.5
+
+                # Adjust threshold based on behavioural traits.  Greedy or
+                # aggressive factions are more likely to demand tribute, so
+                # increase the threshold; benevolent or cautious factions
+                # lean towards truce, so decrease it.
+                threshold += 0.2 * greedy + 0.2 * aggressive
+                threshold -= 0.2 * benevolent + 0.1 * cautious
+                # Event-specific modifications: a pandemic makes factions
+                # desperate and thus more likely to demand tribute (+0.1),
+                # whereas a storm encourages truces (-0.1). These shifts
+                # adjust the bias before clamping.
+                if "pandemic" in event_types:
+                    threshold += 0.1
+                if "storm" in event_types:
+                    threshold -= 0.1
+                # Travel telemetry influence: when the player is heavily
+                # laden, factions are more inclined to demand tribute; when
+                # travel conditions are poor (high travel modifier), they
+                # prefer truces to preserve resources.
+                threshold += 0.15 * load_chance_mod
+                threshold -= 0.15 * travel_chance_mod
+                threshold = min(max(threshold, 0.0), 1.0)
+                if bias < threshold:
+                    n_type = "tribute"
+                    amount = max(10.0, abs(rep))
+                    desc = (
+                        f"{faction.name} demands tribute of {amount:.0f} units of supplies for safe passage."
+                    )
+                    payload = {"demand": amount, "reward": 0.0}
+                else:
+                    n_type = "truce"
+                    desc = f"{faction.name} proposes a truce to cease hostilities."
+                    payload = {"reward": 0.0, "demand": 0.0}
+            elif rep > 5.0:
+                # Positive reputation: aid requests or coalition invites. Technocratic
+                # factions bias towards aid; militaristic bias towards coalition.
+                bias = float(self._mission_rng.random())
+                if ideology == "technocratic":
+                    threshold = 0.7
+                elif ideology == "militaristic":
+                    threshold = 0.3
+                elif ideology == "mercantile":
+                    # Merchants slightly favour aid to increase trade
+                    threshold = 0.6
+                elif ideology == "religious":
+                    # Religious factions lean towards coalitions (e.g. holy wars)
+                    threshold = 0.4
+                elif ideology == "scientific":
+                    # Scientific factions prefer aid (to share knowledge) over coalitions
+                    threshold = 0.8
+                elif ideology == "nomadic":
+                    # Nomadic factions rarely form coalitions; prefer aid
+                    threshold = 0.7
+                else:
+                    threshold = 0.5
+
+                # Adjust threshold based on behavioural traits.  Benevolent
+                # factions tilt towards aid; greedy or aggressive factions
+                # tilt towards coalition to gain advantage.  Expansionist
+                # factions prefer coalition as well.  Cautious factions
+                # prefer aid.
+                threshold -= 0.2 * benevolent + 0.1 * cautious
+                threshold += 0.2 * greedy + 0.2 * aggressive + 0.3 * expansionist
+                # Event-specific adjustments: during a pandemic factions are
+                # more likely to seek aid (+0.15), whereas storms encourage
+                # coalitions (-0.15).
+                if "pandemic" in event_types:
+                    threshold += 0.15
+                if "storm" in event_types:
+                    threshold -= 0.15
+                # Travel telemetry influence: poor travel conditions make aid
+                # requests more appealing, while a heavily loaded player
+                # encourages factions to form coalitions to share risks and
+                # rewards. Adjust the threshold accordingly.
+                threshold -= 0.15 * load_chance_mod
+                threshold += 0.15 * travel_chance_mod
+                threshold = min(max(threshold, 0.0), 1.0)
+                if bias < threshold:
+                    n_type = "aid"
+                    amount = max(5.0, rep / 2)
+                    desc = (
+                        f"{faction.name} requests aid of {amount:.0f} units of supplies to support a common cause."
+                    )
+                    payload = {"demand": amount, "reward": 0.0}
+                else:
+                    n_type = "coalition"
+                    reward = max(10.0, rep)
+                    desc = (
+                        f"{faction.name} invites you to join a coalition against a common enemy, offering {reward:.0f} reputation reward."
+                    )
+                    payload = {"reward": reward, "demand": 0.0}
+            else:
+                # Neutral reputation: minor tribute or aid. Use ideology to
+                # nudge preference. Militaristic biases to tribute, technocratic to aid.
+                bias = float(self._mission_rng.random())
+                if ideology == "militaristic":
+                    threshold = 0.7
+                elif ideology == "technocratic":
+                    threshold = 0.3
+                elif ideology == "mercantile":
+                    threshold = 0.5
+                elif ideology == "religious":
+                    # Religious factions tilt towards aid (share resources)
+                    threshold = 0.4
+                elif ideology == "scientific":
+                    # Scientists lean towards aid
+                    threshold = 0.6
+                elif ideology == "nomadic":
+                    # Nomadic factions have no strong preference between tribute and aid
+                    threshold = 0.5
+                else:
+                    threshold = 0.5
+
+                # Adjust threshold based on behavioural traits similar to
+                # neutral case: greedy or aggressive factions lean towards
+                # tribute; benevolent factions lean towards aid; cautious
+                # factions slightly favour aid; expansionist factions
+                # slightly favour tribute as preparation for dominance.
+                threshold += 0.2 * greedy + 0.2 * aggressive + 0.1 * expansionist
+                threshold -= 0.2 * benevolent + 0.1 * cautious
+                # Travel telemetry influence: a heavy load pushes factions
+                # towards tribute, while difficult travel encourages aid.
+                threshold += 0.15 * load_chance_mod
+                threshold -= 0.15 * travel_chance_mod
+                threshold = min(max(threshold, 0.0), 1.0)
+                if bias < threshold:
+                    n_type = "tribute"
+                    amount = 10.0
+                    desc = f"{faction.name} demands a minor tribute of 10 units of supplies."
+                    payload = {"demand": amount, "reward": 0.0}
+                else:
+                    n_type = "aid"
+                    amount = 10.0
+                    desc = f"{faction.name} requests minor aid of 10 units of supplies."
+                    payload = {"demand": amount, "reward": 0.0}
+            negotiations.append(
+                {
+                    "faction": faction.name,
+                    "type": n_type,
+                    "description": desc,
+                    "expires": day + 5,
+                    **payload,
+                }
+            )
+        # Deduplicate negotiations
+        unique_negotiations: list[dict[str, object]] = []
+        seen_keys: set[tuple[str, str, int]] = set()
+        for n in negotiations:
+            key = (
+                str(n.get("faction", "")),
+                str(n.get("type", "")),
+                int(n.get("expires", day)),
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            unique_negotiations.append(n)
+        world_state["negotiations"] = unique_negotiations
+
+    # ------------------------------------------------------------------
+    def _apply_ideological_drift(self) -> None:
+        """Adjust inter-faction standings based on ideological alignment.
+
+        Factions sharing the same ideology become slightly more amicable over
+        time, whereas factions with differing ideologies drift apart. The
+        adjustment is small to avoid overpowering other diplomatic events.
+        """
+        # Build a list of faction records for easier iteration.
+        factions = list(self.ledger.iterate_factions())
+        count = len(factions)
+        if count < 2:
+            return
+        for i in range(count):
+            fa = factions[i]
+            for j in range(i + 1, count):
+                fb = factions[j]
+                if fa.ideology == fb.ideology:
+                    delta = 0.1
+                else:
+                    delta = -0.1
+                # Use adjust_standing on the diplomacy matrix. The call is
+                # symmetric and ensures the updated standing remains within
+                # min/max bounds defined by FactionDiplomacy.
+                try:
+                    self.diplomacy.adjust_standing(fa.name, fb.name, delta)
+                except Exception:
+                    continue
+
+    # ------------------------------------------------------------------
+    def _apply_ideological_influence(self) -> None:
+        """Allow factions to adopt a new ideology based on positive relations.
+
+        After adjusting standings via ideological drift, factions may be
+        swayed by close allies or trading partners.  For each faction,
+        we accumulate positive standing values from all other factions
+        grouped by their ideologies.  If a different ideology exerts
+        substantial influence, the faction has a chance to adopt that
+        ideology.  The probability of adoption increases with the
+        summed standing of influencing factions.  Only positive
+        standings contribute; hostile relations do not encourage
+        ideological alignment.
+
+        This process is intentionally conservative to prevent
+        excessive churn: adoption chances are capped at 10%, and the
+        current ideology is retained unless another ideology has a
+        strictly higher influence score.
+        """
+        # Build a list of faction records to avoid repeated iteration.
+        factions = list(self.ledger.iterate_factions())
+        # If fewer than two factions exist, nothing to influence.
+        if len(factions) < 2:
+            return
+        for fa in factions:
+            # Skip unnamed factions
+            if not fa.name:
+                continue
+            current_ideology = fa.ideology
+            # Gather influence scores by ideology
+            influence: dict[str, float] = {}
+            for fb in factions:
+                if fa.name == fb.name:
+                    continue
+                other_ideology = fb.ideology
+                if not other_ideology:
+                    continue
+                try:
+                    standing = self.diplomacy.get_standing(fa.name, fb.name)
+                except Exception:
+                    standing = 0.0
+                # Only consider positive relations
+                if standing <= 0.0:
+                    continue
+                influence[other_ideology] = influence.get(other_ideology, 0.0) + float(standing)
+            # No positive influences means no shift
+            if not influence:
+                continue
+            # Determine the ideology with the highest influence
+            best_ideology, best_score = max(influence.items(), key=lambda item: item[1])
+            # Do not change if the current ideology already has the highest influence
+            # (ties implicitly favour the current ideology)
+            # Move the faction's ideology weights toward the best ideology.
+            # The amount of adjustment is proportional to the influence
+            # score relative to a maximum of 100.  A score of 100 moves
+            # 10% of the distance toward the target ideology in a single
+            # step.  This creates a smooth ideological spectrum rather
+            # than an abrupt switch.
+            # If the current ideology already has the highest influence,
+            # weights remain unchanged.  Otherwise we adjust the weights.
+            delta = min(0.1, best_score / 100.0)
+            if delta > 0:
+                try:
+                    self.ledger.adjust_ideology_weight(fa.name, best_ideology, delta)
+                except Exception:
+                    continue
+
+    # ------------------------------------------------------------------
+    def _check_for_schisms(self, *, day: int) -> None:
+        """Identify factions under severe stress and split them.
+
+        A faction is considered stressed if its wealth is very low and its
+        recorded losses are high. When such conditions are met, the faction
+        is duplicated into a new splinter faction. The parent faction and
+        the splinter faction will share resources and preferences evenly and
+        start with a positive standing between them. The splinter faction
+        inherits the parent's ideology.
+
+        Args:
+            day: The current day number, used to ensure unique faction names.
+        """
+        for faction in list(self.ledger.iterate_factions()):
+            try:
+                wealth = faction.resource_amount("wealth", 0.0)
+                # Losses are stored as negative numbers when damage has been
+                # sustained (see ``_rebuild_after_losses``). We use the
+                # absolute value for our stress check.
+                losses = abs(faction.resource_amount("losses", 0.0))
+                # Define stress thresholds. When wealth is depleted and losses
+                # are substantial, we trigger a schism.
+                if wealth > 5.0 or losses < 10.0:
+                    continue
+                # Create a unique name for the splinter faction.
+                new_name = f"{faction.name}-splinter-{day}"
+                # Ensure the new faction does not already exist.
+                if new_name in self.factions:
+                    continue
+                # Register the new faction in the ledger.
+                new_faction = self.ledger.faction_record(new_name)
+                # Assign the same ideology to the splinter group.
+                new_faction_ideology = faction.ideology
+                self.ledger.set_ideology(new_name, new_faction_ideology)
+                # Copy resource preferences from the parent.
+                parent_prefs = self.ledger._preferences.filter(pl.col("faction") == faction.name)
+                for row in parent_prefs.iter_rows(named=True):
+                    key = row["key"]
+                    weight = float(row["weight"])
+                    self.ledger.set_resource_preference(new_name, key, weight)
+                # Split resources evenly between parent and splinter. We do not
+                # split losses to avoid negative values on the splinter.
+                parent_resources = self.ledger._resources.filter(pl.col("faction") == faction.name)
+                for row in parent_resources.iter_rows(named=True):
+                    res = row["resource"]
+                    amt = float(row["amount"])
+                    if res == "losses":
+                        continue
+                    half = amt * 0.5
+                    # Assign half to the splinter and keep half on the parent.
+                    self.ledger.adjust_resource(new_name, res, half)
+                    self.ledger.adjust_resource(faction.name, res, -half)
+                # Share known sites with the splinter.
+                for site_id in faction.known_sites:
+                    self.ledger.add_known_site(new_name, site_id)
+                # Set a positive standing between parent and splinter due to
+                # shared origins. This will decay over time but starts high.
+                self.diplomacy.set_standing(faction.name, new_name, 20.0)
+            except Exception:
+                # Ignore individual split failures.
+                continue
 
 
 __all__ = ["FactionAIController"]
