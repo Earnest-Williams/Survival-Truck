@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar
 
 from opensimplex import OpenSimplex
 
@@ -253,8 +253,8 @@ def generate_site_network(  # noqa: PLR0915
     *,
     site_count: int = 8,
     radius: int = 6,
-    center: Optional[HexCoord] = None,
-    site_type_bias: Optional[Mapping["SiteType", float]] = None,
+    center: HexCoord | None = None,
+    site_type_bias: Mapping["SiteType", float] | None = None,
 ) -> SiteNetwork:
     """Procedurally place typed sites and build their connectivity graph.
 

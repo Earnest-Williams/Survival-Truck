@@ -1,28 +1,28 @@
 """Persistence helpers for Survival Truck.
 
-This module provides functions to save and load the game's simulation
-state in a consolidated fashion.  Unlike the upstream project, which
-stores daily diffs and seasonal snapshots separately, these helpers
-persist all relevant data—dynamic world state entries (events,
-missions, negotiations), and faction‑specific data (ideology weights,
-behavioural traits, reputation)—into a single JSON file per save slot.
+Two persistence strategies are supported:
 
-On save, a JSON‑serialisable structure is constructed containing the
-current ``world_state`` and a mapping of faction names to their
-ideology weight distributions, trait values and reputation.  On
-load, the structure is read back and returned to the caller for
-merging into the active simulation.
+* A light-weight JSON based quick-save facility (``save_game_state`` /
+  ``load_game_state``) used by prototypes and debug tooling.
+* A structured SQLite storage layer for campaign saves.  The SQLite
+  layer stores validated :class:`~game.world.config.WorldConfig`
+  payloads as well as daily diffs and seasonal snapshots encoded via
+  :class:`~game.world.save_models.WorldSnapshot`.
 
-The save files are stored in a platform‑appropriate user data
-directory using ``platformdirs.user_data_dir``.  Each slot has its
-own file named ``<slot>_save.json``.
+Historically the project only implemented the JSON helpers.  The tests
+exercise the richer SQLite flow, so the functions implemented below
+initialise the database schema, serialise payloads to JSON, and surface
+convenient iterator/loader utilities.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, Mapping, Tuple
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Iterable, Iterator, Mapping, Tuple
 
 try:
     # ``platformdirs`` is an optional dependency, but recommended for
@@ -31,6 +31,14 @@ try:
     from platformdirs import user_data_dir
 except Exception:
     user_data_dir = None  # type: ignore[assignment]
+
+from .config import WorldConfig
+from .save_models import WorldSnapshot, WorldSnapshotMetadata
+
+
+# ---------------------------------------------------------------------------
+# JSON quick-save helpers
+# ---------------------------------------------------------------------------
 
 
 def _get_save_dir(app_name: str = "survival_truck") -> str:
@@ -196,3 +204,260 @@ def load_game_state(
         return world_state, factions
     except Exception:
         return {}, {}
+
+
+# ---------------------------------------------------------------------------
+# SQLite campaign storage helpers
+# ---------------------------------------------------------------------------
+
+ConnectionLike = sqlite3.Connection
+
+
+@dataclass(frozen=True)
+class SeasonalSnapshotRecord:
+    """Container returned by :func:`load_season_snapshot` and iterator helpers."""
+
+    season: str
+    metadata: WorldSnapshotMetadata
+    snapshot: WorldSnapshot
+
+
+def create_world_engine(path: os.PathLike[str] | str) -> ConnectionLike:
+    """Create a SQLite connection for world persistence.
+
+    The parent directory is created automatically.  The connection has
+    row access by column name enabled for convenience.
+    """
+
+    db_path = Path(path)
+    if not db_path.parent.exists():
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _require_connection(engine: ConnectionLike) -> ConnectionLike:
+    if isinstance(engine, sqlite3.Connection):
+        return engine
+    raise TypeError("engine must be a sqlite3.Connection produced by create_world_engine")
+
+
+def init_world_storage(engine: ConnectionLike) -> None:
+    """Initialise the SQLite schema used for campaign persistence."""
+
+    connection = _require_connection(engine)
+    with connection:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS world_configs (
+                slot TEXT PRIMARY KEY,
+                payload TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_diffs (
+                slot TEXT NOT NULL,
+                day INTEGER NOT NULL,
+                metadata TEXT NOT NULL,
+                snapshot TEXT NOT NULL,
+                PRIMARY KEY (slot, day)
+            );
+
+            CREATE TABLE IF NOT EXISTS seasonal_snapshots (
+                slot TEXT NOT NULL,
+                season TEXT NOT NULL,
+                day INTEGER NOT NULL,
+                metadata TEXT NOT NULL,
+                snapshot TEXT NOT NULL,
+                PRIMARY KEY (slot, season, day)
+            );
+            """
+        )
+
+
+def _dump_json(model: Any) -> str:
+    if hasattr(model, "model_dump"):
+        return json.dumps(model.model_dump(mode="json"), ensure_ascii=False)
+    return json.dumps(model, ensure_ascii=False)
+
+
+def _load_world_config(payload: str) -> WorldConfig:
+    data = json.loads(payload)
+    return WorldConfig.model_validate(data)
+
+
+def _load_snapshot_metadata(payload: str) -> WorldSnapshotMetadata:
+    data = json.loads(payload)
+    return WorldSnapshotMetadata.model_validate(data)
+
+
+def _load_snapshot(payload: str) -> WorldSnapshot:
+    data = json.loads(payload)
+    return WorldSnapshot.model_validate(data)
+
+
+def store_world_config(engine: ConnectionLike, slot: str, config: WorldConfig) -> None:
+    """Persist a :class:`WorldConfig` for the specified slot."""
+
+    connection = _require_connection(engine)
+    payload = _dump_json(config)
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO world_configs(slot, payload)
+            VALUES (?, ?)
+            ON CONFLICT(slot) DO UPDATE SET payload = excluded.payload
+            """,
+            (slot, payload),
+        )
+
+
+def load_world_config(engine: ConnectionLike, slot: str) -> WorldConfig | None:
+    """Load the :class:`WorldConfig` for ``slot`` if it exists."""
+
+    connection = _require_connection(engine)
+    row = connection.execute(
+        "SELECT payload FROM world_configs WHERE slot = ?",
+        (slot,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _load_world_config(row["payload"])
+
+
+def store_daily_diff(
+    engine: ConnectionLike,
+    slot: str,
+    snapshot: WorldSnapshot,
+) -> WorldSnapshotMetadata:
+    """Store a daily diff snapshot and return its metadata."""
+
+    connection = _require_connection(engine)
+    metadata = snapshot.metadata()
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO daily_diffs(slot, day, metadata, snapshot)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(slot, day) DO UPDATE SET
+                metadata = excluded.metadata,
+                snapshot = excluded.snapshot
+            """,
+            (
+                slot,
+                metadata.day,
+                _dump_json(metadata),
+                _dump_json(snapshot),
+            ),
+        )
+    return metadata
+
+
+def load_daily_diff(
+    engine: ConnectionLike,
+    slot: str,
+    day: int,
+) -> tuple[WorldSnapshotMetadata, WorldSnapshot] | None:
+    """Load a daily diff for ``slot``/``day``."""
+
+    connection = _require_connection(engine)
+    row = connection.execute(
+        "SELECT metadata, snapshot FROM daily_diffs WHERE slot = ? AND day = ?",
+        (slot, day),
+    ).fetchone()
+    if row is None:
+        return None
+    metadata = _load_snapshot_metadata(row["metadata"])
+    snapshot = _load_snapshot(row["snapshot"])
+    return metadata, snapshot
+
+
+def iter_daily_diffs(engine: ConnectionLike, slot: str) -> Iterator[tuple[WorldSnapshotMetadata, WorldSnapshot]]:
+    """Yield all stored daily diffs for ``slot`` ordered by day."""
+
+    connection = _require_connection(engine)
+    cursor = connection.execute(
+        "SELECT metadata, snapshot FROM daily_diffs WHERE slot = ? ORDER BY day ASC",
+        (slot,),
+    )
+    for row in cursor:
+        yield _load_snapshot_metadata(row["metadata"]), _load_snapshot(row["snapshot"])
+
+
+def store_season_snapshot(
+    engine: ConnectionLike,
+    slot: str,
+    snapshot: WorldSnapshot,
+    *,
+    season: str,
+) -> WorldSnapshotMetadata:
+    """Persist a seasonal snapshot for ``slot`` and return its metadata."""
+
+    connection = _require_connection(engine)
+    metadata = snapshot.metadata()
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO seasonal_snapshots(slot, season, day, metadata, snapshot)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(slot, season, day) DO UPDATE SET
+                metadata = excluded.metadata,
+                snapshot = excluded.snapshot
+            """,
+            (
+                slot,
+                season,
+                metadata.day,
+                _dump_json(metadata),
+                _dump_json(snapshot),
+            ),
+        )
+    return metadata
+
+
+def load_season_snapshot(
+    engine: ConnectionLike,
+    slot: str,
+    day: int,
+) -> SeasonalSnapshotRecord | None:
+    """Load the seasonal snapshot recorded for ``day`` if present."""
+
+    connection = _require_connection(engine)
+    row = connection.execute(
+        """
+        SELECT season, metadata, snapshot
+        FROM seasonal_snapshots
+        WHERE slot = ? AND day = ?
+        ORDER BY rowid DESC
+        LIMIT 1
+        """,
+        (slot, day),
+    ).fetchone()
+    if row is None:
+        return None
+    return SeasonalSnapshotRecord(
+        season=row["season"],
+        metadata=_load_snapshot_metadata(row["metadata"]),
+        snapshot=_load_snapshot(row["snapshot"]),
+    )
+
+
+def iter_season_snapshots(engine: ConnectionLike, slot: str) -> Iterator[SeasonalSnapshotRecord]:
+    """Yield all seasonal snapshots stored for ``slot`` ordered by day."""
+
+    connection = _require_connection(engine)
+    cursor = connection.execute(
+        """
+        SELECT season, metadata, snapshot
+        FROM seasonal_snapshots
+        WHERE slot = ?
+        ORDER BY day ASC
+        """,
+        (slot,),
+    )
+    for row in cursor:
+        yield SeasonalSnapshotRecord(
+            season=row["season"],
+            metadata=_load_snapshot_metadata(row["metadata"]),
+            snapshot=_load_snapshot(row["snapshot"]),
+        )
